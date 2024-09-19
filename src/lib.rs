@@ -14,6 +14,7 @@
 //!
 //! # Examples
 //!
+//! ## Import in generic JSON format used by many wallets
 //! ```rust
 //! use pubport::Format;
 //!
@@ -25,6 +26,10 @@
 //! let format = format.unwrap();
 //! assert!(matches!(format, Format::Json(_)));
 //! ```
+//!
+//! ## Import from file containing descriptors
+//!
+//! ***note: need external and internal descriptors, but can be single descriptor or multiple descriptor format***
 //!
 //! ```rust
 //! use pubport::Format;
@@ -38,6 +43,8 @@
 //! assert!(matches!(format, Format::Descriptor(_)));
 //! ```
 //!
+//! ## Import from wasabi wallet format
+//!
 //! ```rust
 //! use pubport::Format;
 //!
@@ -48,6 +55,20 @@
 //!
 //! let format = format.unwrap();
 //! assert!(matches!(format, Format::Wasabi(_)));
+//! ```
+//!
+//! ## Import from electrum wallet format
+//!
+//! ```rust
+//! use pubport::Format;
+//!
+//! let string = std::fs::read_to_string("test/data/new-electrum.json").unwrap();
+//! let format = Format::try_new_from_str(&string);
+//!
+//! assert!(format.is_ok());
+//!
+//! let format = format.unwrap();
+//! assert!(matches!(format, Format::Electrum(_)));
 //! ```
 
 pub mod descriptors;
