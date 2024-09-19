@@ -5,8 +5,9 @@ edition = "2021"
 
 [dependencies]
 # Bitcoin
-bdk_wallet = { version = "1.0.0-beta.4", features = [] }
 bitcoin = "0.32"
+miniscript = { version = "12.0", features = [] }
+secp256k1 = "0.29"
 
 # errors
 thiserror = "1.0"
@@ -17,3 +18,4 @@ log = "0.4"
 # serde
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+

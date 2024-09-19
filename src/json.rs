@@ -2,10 +2,12 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenericJson {
-    pub chain: String,
-    pub xfp: String,
-    pub account: u32,
-    pub xpub: String,
+    #[serde(default)]
+    pub chain: Option<String>,
+    #[serde(default)]
+    pub xfp: Option<String>,
+    #[serde(default)]
+    pub xpub: Option<String>,
     pub bip44: Option<SingleSig>,
     pub bip49: Option<SingleSig>,
     pub bip84: Option<SingleSig>,
@@ -36,15 +38,19 @@ pub struct Keystore {
     pub xpub: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SingleSig {
     #[serde(default)]
     pub name: Option<Name>,
     #[serde(default)]
     pub xfp: Option<String>,
-    pub deriv: String,
-    pub xpub: String,
-    pub desc: String,
+    #[serde(default)]
+    pub deriv: Option<String>,
+    #[serde(default)]
+    pub xpub: Option<String>,
+    #[serde(default)]
+    #[serde(rename = "desc")]
+    pub descriptor: Option<String>,
     #[serde(default)]
     pub first: Option<String>,
 }
@@ -85,5 +91,20 @@ mod tests {
         let json = std::fs::read_to_string("test/data/coldcard-export.json").unwrap();
         let generic = serde_json::from_str::<GenericJson>(&json);
         assert!(generic.is_ok());
+    }
+
+    #[test]
+    fn test_single_sig_defaults() {
+        let json = r#"{
+            "name": "p2wpkh",
+            "xfp": "8DFECFC3",
+            "deriv": "m/84h/0h/0h",
+            "xpub": "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM",
+            "_pub": "zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1",
+            "first": "bc1q0g0vn4yqyk0zjwxw0zv5pltyyczty004zc9g7r"
+        }"#;
+
+        let single_sig = serde_json::from_str::<SingleSig>(json);
+        assert!(single_sig.is_ok());
     }
 }

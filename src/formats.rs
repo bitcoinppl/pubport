@@ -1,5 +1,7 @@
-use bdk_wallet::keys::DescriptorPublicKey;
-use serde::{Deserialize, Serialize};
+use crate::{
+    descriptors::{self, Descriptors},
+    json::{self, GenericJson},
+};
 
 #[derive(Debug, Clone)]
 pub enum Format {
@@ -11,46 +13,57 @@ pub enum Format {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Invalid descriptor")]
-    InvalidDescriptor,
+    #[error("Invalid descriptor: {0:?}")]
+    InvalidDescriptor(#[from] descriptors::Error),
 
     #[error("Invalid json: {0}")]
     InvalidJsonParse(#[from] serde_json::Error),
+
+    #[error("Unable to create descriptor from json")]
+    InvalidDescriptorInJson,
 
     #[error("Invalid json, no xpubs or descriptor")]
     JsonNoDecriptor,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Descriptors {
-    pub external: DescriptorPublicKey,
-    pub internal: DescriptorPublicKey,
-}
-
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct Json {
-    #[serde(default)]
     pub bip44: Option<Descriptors>,
-    #[serde(default)]
     pub bip49: Option<Descriptors>,
-    #[serde(default)]
     pub bip84: Option<Descriptors>,
 }
 
-impl Json {
-    pub fn try_new(
-        bip44: Option<Descriptors>,
-        bip49: Option<Descriptors>,
-        bip84: Option<Descriptors>,
-    ) -> Result<Self, Error> {
+impl TryFrom<GenericJson> for Json {
+    type Error = Error;
+
+    fn try_from(json: GenericJson) -> Result<Self, Self::Error> {
+        if json.bip44.is_none() && json.bip49.is_none() && json.bip84.is_none() {
+            return Err(Error::JsonNoDecriptor);
+        }
+
+        let bip44 = json.bip44.map(Descriptors::try_from).transpose()?;
+        let bip49 = json.bip49.map(Descriptors::try_from).transpose()?;
+        let bip84 = json.bip84.map(Descriptors::try_from).transpose()?;
+
         if bip44.is_none() && bip49.is_none() && bip84.is_none() {
             return Err(Error::JsonNoDecriptor);
         }
 
-        Ok(Self {
+        Ok(Json {
             bip44,
             bip49,
             bip84,
         })
+    }
+}
+
+impl Format {
+    pub fn try_new_from_str(string: &str) -> Result<Self, Error> {
+        if let Ok(json) = serde_json::from_str::<json::GenericJson>(string) {
+            let json = Json::try_from(json)?;
+            return Ok(Format::Json(json));
+        }
+
+        todo!()
     }
 }
