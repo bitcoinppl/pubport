@@ -161,10 +161,10 @@ impl TryFrom<ElectrumJson> for Descriptors {
     }
 }
 
-impl TryFrom<String> for Descriptors {
+impl TryFrom<&str> for Descriptors {
     type Error = Error;
 
-    fn try_from(desc: String) -> Result<Self, Self::Error> {
+    fn try_from(desc: &str) -> Result<Self, Self::Error> {
         let lines = desc
             .trim()
             .split('\n')
@@ -375,7 +375,7 @@ mod tests {
             wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/1/*)#p5r598m9
         "#;
 
-        let desc = Descriptors::try_from(desc.to_string()).unwrap();
+        let desc = Descriptors::try_from(desc).unwrap();
 
         assert_eq!(desc.external.to_string(), known_desc().external.to_string());
         assert_eq!(desc.internal.to_string(), known_desc().internal.to_string());

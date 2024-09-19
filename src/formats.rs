@@ -71,10 +71,48 @@ impl TryFrom<GenericJson> for Json {
 impl Format {
     pub fn try_new_from_str(string: &str) -> Result<Self, Error> {
         if let Ok(json) = serde_json::from_str::<json::GenericJson>(string) {
-            let json = Json::try_from(json)?;
-            return Ok(Format::Json(json));
+            if let Ok(json) = Json::try_from(json) {
+                return Ok(Format::Json(json));
+            }
         }
 
-        todo!()
+        if let Ok(json) = serde_json::from_str::<json::WasabiJson>(string) {
+            if let Ok(desc) = Descriptors::try_from(json) {
+                return Ok(Format::Wasabi(desc));
+            }
+        }
+
+        if let Ok(json) = serde_json::from_str::<json::ElectrumJson>(string) {
+            if let Ok(desc) = Descriptors::try_from(json) {
+                return Ok(Format::Electrum(desc));
+            }
+        }
+
+        let desc = Descriptors::try_from(string)?;
+        Ok(Format::Descriptor(desc))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_all_formats() {
+        let files = std::fs::read_dir("test/data").unwrap();
+
+        for file in files {
+            let file = file.unwrap();
+            let path = file.path();
+
+            if !path.ends_with(".json") || path.ends_with(".txt") {
+                continue;
+            }
+
+            let string = std::fs::read_to_string(&path).unwrap();
+
+            let format = Format::try_new_from_str(&string);
+            assert!(format.is_ok());
+        }
     }
 }
