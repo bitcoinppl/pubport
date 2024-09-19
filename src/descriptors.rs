@@ -161,6 +161,40 @@ impl TryFrom<ElectrumJson> for Descriptors {
     }
 }
 
+impl TryFrom<String> for Descriptors {
+    type Error = Error;
+
+    fn try_from(desc: String) -> Result<Self, Self::Error> {
+        let lines = desc
+            .trim()
+            .split('\n')
+            .filter(|line| !line.is_empty())
+            .map(|line| line.trim())
+            .collect::<Vec<&str>>();
+
+        match lines.len() {
+            1 => Descriptors::try_from_line(lines[0]),
+            2 => {
+                let external = lines[0];
+                let internal = lines[1];
+
+                let secp = &secp256k1::Secp256k1::signing_only();
+                let (internal_desc, _keymap) =
+                    Descriptor::<DescriptorPublicKey>::parse_descriptor(secp, internal)?;
+
+                let (external_desc, _keymap) =
+                    Descriptor::<DescriptorPublicKey>::parse_descriptor(secp, external)?;
+
+                Ok(Descriptors {
+                    external: external_desc,
+                    internal: internal_desc,
+                })
+            }
+            _ => Err(Error::TooManyKeys),
+        }
+    }
+}
+
 fn wrap_in_script_type(script_type: Name, script: &str) -> String {
     match script_type {
         Name::P2pkh => format!("pkh({})", script),
@@ -332,5 +366,18 @@ mod tests {
 
         assert_eq!(desc.external, known_desc.external);
         assert_eq!(desc.internal, known_desc.internal);
+    }
+
+    #[test]
+    fn test_from_descriptors_file() {
+        let desc = r#"
+            wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/0/*)#sqx4cjta
+            wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/1/*)#p5r598m9
+        "#;
+
+        let desc = Descriptors::try_from(desc.to_string()).unwrap();
+
+        assert_eq!(desc.external.to_string(), known_desc().external.to_string());
+        assert_eq!(desc.internal.to_string(), known_desc().internal.to_string());
     }
 }
