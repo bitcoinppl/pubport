@@ -43,23 +43,17 @@ impl TryFrom<GenericJson> for Json {
 
         let bip44 = json
             .bip44
-            .map(|single_sig| {
-                Descriptors::try_from_single_sig(single_sig, json.xfp.as_ref().map(|s| s.as_str()))
-            })
+            .map(|single_sig| Descriptors::try_from_single_sig(single_sig, json.xfp.as_deref()))
             .transpose()?;
 
         let bip49 = json
             .bip49
-            .map(|single_sig| {
-                Descriptors::try_from_single_sig(single_sig, json.xfp.as_ref().map(|s| s.as_str()))
-            })
+            .map(|single_sig| Descriptors::try_from_single_sig(single_sig, json.xfp.as_deref()))
             .transpose()?;
 
         let bip84 = json
             .bip84
-            .map(|single_sig| {
-                Descriptors::try_from_single_sig(single_sig, json.xfp.as_ref().map(|s| s.as_str()))
-            })
+            .map(|single_sig| Descriptors::try_from_single_sig(single_sig, json.xfp.as_deref()))
             .transpose()?;
 
         if bip44.is_none() && bip49.is_none() && bip84.is_none() {

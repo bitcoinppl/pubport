@@ -1,7 +1,20 @@
-use bitcoin::base58;
+use std::str::FromStr as _;
 
-pub fn zpub_to_xpub(zpub: &str) -> Result<String, Box<dyn std::error::Error>> {
-    // Decode zpub
+use bitcoin::{
+    base58,
+    bip32::{Fingerprint, Xpub},
+};
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Invalid xpub: {0}")]
+    InvalidXpub(#[from] bitcoin::bip32::Error),
+
+    #[error("Invalid zpub: {0}")]
+    InvalidZpub(#[from] base58::Error),
+}
+
+pub fn zpub_to_xpub(zpub: &str) -> Result<String, Error> {
     let decoded = base58::decode_check(zpub)?;
 
     // Replace version bytes (first 4 bytes) with xpub version
@@ -13,6 +26,16 @@ pub fn zpub_to_xpub(zpub: &str) -> Result<String, Box<dyn std::error::Error>> {
     let xpub = base58::encode_check(&xpub_data);
 
     Ok(xpub)
+}
+
+pub fn xpub_to_fingerprint(xpub: &str) -> Result<Fingerprint, Error> {
+    let extended_pubkey = Xpub::from_str(xpub).map_err(Error::InvalidXpub)?;
+    let fingerprint = match extended_pubkey.parent_fingerprint.as_bytes() {
+        [0, 0, 0, 0] => extended_pubkey.fingerprint(),
+        _ => extended_pubkey.parent_fingerprint,
+    };
+
+    Ok(fingerprint)
 }
 
 #[cfg(test)]

@@ -1,6 +1,9 @@
 use miniscript::{descriptor::DescriptorKeyParseError, Descriptor, DescriptorPublicKey};
 
-use crate::json::{Name, SingleSig, WasabiJson};
+use crate::{
+    json::{ElectrumJson, Name, SingleSig, WasabiJson},
+    xpub,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -30,6 +33,9 @@ pub enum Error {
 
     #[error("Missing fingerprint (xfp)")]
     MissingFingerprint,
+
+    #[error("Unable to parse xpub: {0:?}")]
+    InvalidXpub(#[from] xpub::Error),
 }
 
 #[derive(Debug, Clone)]
@@ -102,7 +108,53 @@ impl TryFrom<WasabiJson> for Descriptors {
         let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
         let desc = wrap_in_script_type(Name::P2wpkh, &script);
 
-        println!("wasabi desc: {}", desc);
+        let desc = Descriptors::try_from_line(&desc)?;
+        Ok(desc)
+    }
+}
+
+impl TryFrom<ElectrumJson> for Descriptors {
+    type Error = Error;
+
+    fn try_from(json: ElectrumJson) -> Result<Self, Self::Error> {
+        let keystore = &json.keystore;
+
+        let mut script_type = None;
+        if keystore.derivation.starts_with("m/84") {
+            script_type = Some(Name::P2wpkh);
+        }
+
+        if keystore.derivation.starts_with("m/49") {
+            script_type = Some(Name::P2shP2wpkh);
+        }
+
+        if keystore.derivation.starts_with("m/44") {
+            script_type = Some(Name::P2pkh);
+        }
+
+        if script_type.is_none() {
+            return Err(Error::MissingScriptType);
+        }
+
+        let script_type = script_type.expect("checked above");
+        let xpub = if keystore.xpub.starts_with("zpub") {
+            xpub::zpub_to_xpub(&keystore.xpub)?
+        } else {
+            keystore.xpub.clone()
+        };
+
+        let fingerprint = match (&keystore.ckcc_xfp, &keystore.ckcc_xpub) {
+            (Some(fingerprint), _) => {
+                let xfp = fingerprint.swap_bytes();
+                format!("{:08X}", xfp)
+            }
+            (None, Some(ck_xpub)) => xpub::xpub_to_fingerprint(ck_xpub)?.to_string(),
+            (None, None) => xpub::xpub_to_fingerprint(&xpub)?.to_string(),
+        };
+
+        let derivation_path = keystore.derivation.replace("m/", "");
+        let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
+        let desc = wrap_in_script_type(script_type, &script);
 
         let desc = Descriptors::try_from_line(&desc)?;
         Ok(desc)
@@ -120,6 +172,11 @@ fn wrap_in_script_type(script_type: Name, script: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn known_desc() -> Descriptors {
+        let known_desc = "wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/<0;1>/*)#60tjs4c7";
+        Descriptors::try_from_line(known_desc).unwrap()
+    }
 
     #[test]
     fn test_parse_combination_descriptor() {
@@ -150,19 +207,23 @@ mod tests {
 
         let single_sig: SingleSig = serde_json::from_str(single_sig).unwrap();
 
-        let desc = "wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/<0;1>/*)#60tjs4c7";
-        let desc = Descriptors::try_from_line(desc).unwrap();
-
         let parse_desc = Descriptors::try_from_single_sig(single_sig, Some("817E7BE0"));
 
         assert!(parse_desc.is_ok());
         let parse_desc = parse_desc.unwrap();
 
-        assert_eq!(desc.external, parse_desc.external);
-        assert_eq!(desc.internal, parse_desc.internal);
+        assert_eq!(known_desc().external, parse_desc.external);
+        assert_eq!(known_desc().internal, parse_desc.internal);
 
-        assert_eq!(parse_desc.external.to_string(), desc.external.to_string());
-        assert_eq!(parse_desc.internal.to_string(), desc.internal.to_string());
+        assert_eq!(
+            parse_desc.external.to_string(),
+            known_desc().external.to_string()
+        );
+
+        assert_eq!(
+            parse_desc.internal.to_string(),
+            known_desc().internal.to_string()
+        );
     }
 
     #[test]
@@ -178,7 +239,95 @@ mod tests {
 
         assert!(desc.is_ok());
         let desc = desc.unwrap();
-        let known_desc = "wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/<0;1>/*)#60tjs4c7";
+
+        assert_eq!(desc.external, known_desc().external);
+        assert_eq!(desc.internal, known_desc().internal);
+    }
+
+    #[test]
+    fn test_parse_electrum() {
+        let json = r#"{
+            "seed_version": 17,
+            "use_encryption": false,
+            "wallet_type": "standard",
+            "keystore": {
+                "type": "hardware",
+                "hw_type": "coldcard",
+                "label": "Coldcard Import 817E7BE0",
+                "ckcc_xfp": 3766189697,
+                "ckcc_xpub": "xpub661MyMwAqRbcFFr2SGY3dUn7g8P9VKNZdKWL2Z2pZMEkBWH2D1KTcwTn7keZQCaScCx7BUDjHFJJHnzBvDgUFgNjYsQTRvo7LWfYEtt78Pb",
+                "derivation": "m/84h/0h/0h",
+                "xpub": "zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1"
+            }
+        }"#;
+
+        let electrum = serde_json::from_str::<ElectrumJson>(json);
+        assert!(electrum.is_ok());
+
+        let electrum = electrum.unwrap();
+        let desc = Descriptors::try_from(electrum);
+
+        assert!(desc.is_ok());
+        let desc = desc.unwrap();
+
+        assert_eq!(desc.external, known_desc().external);
+        assert_eq!(desc.internal, known_desc().internal);
+    }
+
+    #[test]
+    fn test_parse_electrum_without_xfp() {
+        let json = r#"{
+            "seed_version": 17,
+            "use_encryption": false,
+            "wallet_type": "standard",
+            "keystore": {
+                "type": "hardware",
+                "hw_type": "coldcard",
+                "label": "Coldcard Import 817E7BE0",
+                "ckcc_xpub": "xpub661MyMwAqRbcFFr2SGY3dUn7g8P9VKNZdKWL2Z2pZMEkBWH2D1KTcwTn7keZQCaScCx7BUDjHFJJHnzBvDgUFgNjYsQTRvo7LWfYEtt78Pb",
+                "derivation": "m/84h/0h/0h",
+                "xpub": "zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1"
+            }
+        }"#;
+
+        let electrum = serde_json::from_str::<ElectrumJson>(json);
+        assert!(electrum.is_ok());
+
+        let electrum = electrum.unwrap();
+        let desc = Descriptors::try_from(electrum);
+
+        assert!(desc.is_ok());
+        let desc = desc.unwrap();
+
+        assert_eq!(desc.external, known_desc().external);
+        assert_eq!(desc.internal, known_desc().internal);
+    }
+
+    #[test]
+    fn test_parse_electrum_without_ckcc() {
+        let json = r#"{
+            "seed_version": 17,
+            "use_encryption": false,
+            "wallet_type": "standard",
+            "keystore": {
+                "type": "hardware",
+                "hw_type": "coldcard",
+                "label": "Coldcard Import 817E7BE0",
+                "derivation": "m/84h/0h/0h",
+                "xpub": "zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1"
+            }
+        }"#;
+
+        let electrum = serde_json::from_str::<ElectrumJson>(json);
+        assert!(electrum.is_ok());
+
+        let electrum = electrum.unwrap();
+        let desc = Descriptors::try_from(electrum);
+
+        assert!(desc.is_ok());
+        let desc = desc.unwrap();
+
+        let known_desc = "wpkh([90645a28/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/<0;1>/*)#ujst24qf";
         let known_desc = Descriptors::try_from_line(known_desc).unwrap();
 
         assert_eq!(desc.external, known_desc.external);

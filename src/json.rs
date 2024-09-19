@@ -32,10 +32,13 @@ pub struct ElectrumJson {
 
 // electrum
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub struct Keystore {
     pub derivation: String,
     pub xpub: String,
+    #[serde(default)]
+    pub ckcc_xfp: Option<u32>,
+    #[serde(default)]
+    pub ckcc_xpub: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
