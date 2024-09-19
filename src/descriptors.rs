@@ -137,10 +137,15 @@ impl TryFrom<ElectrumJson> for Descriptors {
         }
 
         let script_type = script_type.expect("checked above");
-        let xpub = if keystore.xpub.starts_with("zpub") {
-            xpub::zpub_to_xpub(&keystore.xpub)?
-        } else {
-            keystore.xpub.clone()
+        if keystore.xpub.len() < 4 {
+            return Err(xpub::Error::TooShort(keystore.xpub.len()).into());
+        }
+
+        let xpub = match &keystore.xpub.as_str()[..4] {
+            "zpub" => xpub::zpub_to_xpub(&keystore.xpub)?,
+            "ypub" => xpub::ypub_to_xpub(&keystore.xpub)?,
+            "xpub" => keystore.xpub.clone(),
+            starting => return Err(xpub::Error::NotXpub(starting.to_string()).into()),
         };
 
         let fingerprint = match (&keystore.ckcc_xfp, &keystore.ckcc_xpub) {
