@@ -58,13 +58,13 @@ pub struct SingleSig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Name {
-    // BIP44
+    /// BIP44
     P2pkh,
 
-    // BIP49
+    /// BIP49
     P2shP2wpkh,
 
-    // BIP84
+    /// BIP84
     P2wpkh,
 }
 

@@ -41,9 +41,26 @@ impl TryFrom<GenericJson> for Json {
             return Err(Error::JsonNoDecriptor);
         }
 
-        let bip44 = json.bip44.map(Descriptors::try_from).transpose()?;
-        let bip49 = json.bip49.map(Descriptors::try_from).transpose()?;
-        let bip84 = json.bip84.map(Descriptors::try_from).transpose()?;
+        let bip44 = json
+            .bip44
+            .map(|single_sig| {
+                Descriptors::try_from_single_sig(single_sig, json.xfp.as_ref().map(|s| s.as_str()))
+            })
+            .transpose()?;
+
+        let bip49 = json
+            .bip49
+            .map(|single_sig| {
+                Descriptors::try_from_single_sig(single_sig, json.xfp.as_ref().map(|s| s.as_str()))
+            })
+            .transpose()?;
+
+        let bip84 = json
+            .bip84
+            .map(|single_sig| {
+                Descriptors::try_from_single_sig(single_sig, json.xfp.as_ref().map(|s| s.as_str()))
+            })
+            .transpose()?;
 
         if bip44.is_none() && bip49.is_none() && bip84.is_none() {
             return Err(Error::JsonNoDecriptor);

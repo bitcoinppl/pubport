@@ -1,6 +1,6 @@
 use miniscript::{descriptor::DescriptorKeyParseError, Descriptor, DescriptorPublicKey};
 
-use crate::json::{Name, SingleSig};
+use crate::json::{Name, SingleSig, WasabiJson};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -27,6 +27,9 @@ pub enum Error {
 
     #[error("Missing script type")]
     MissingScriptType,
+
+    #[error("Missing fingerprint (xfp)")]
+    MissingFingerprint,
 }
 
 #[derive(Debug, Clone)]
@@ -58,12 +61,11 @@ impl Descriptors {
             internal: multi[1].clone(),
         })
     }
-}
 
-impl TryFrom<SingleSig> for Descriptors {
-    type Error = Error;
-
-    fn try_from(single_sig: SingleSig) -> Result<Self, Self::Error> {
+    pub fn try_from_single_sig(
+        single_sig: SingleSig,
+        fingerprint: Option<&str>,
+    ) -> Result<Self, Error> {
         if let Some(desc) = &single_sig.descriptor {
             let desc = Descriptors::try_from_line(desc)?;
             return Ok(desc);
@@ -72,8 +74,35 @@ impl TryFrom<SingleSig> for Descriptors {
         let script_type = single_sig.name.ok_or(Error::MissingScriptType)?;
         let xpub = single_sig.xpub.ok_or(Error::MissingXpub)?;
 
-        let script = format!("{xpub}/<0;1>/*");
+        let fingerprint = fingerprint
+            .ok_or(Error::MissingFingerprint)?
+            .to_ascii_lowercase();
+
+        let derivation_path = single_sig
+            .deriv
+            .ok_or(Error::MissingDerivationPath)?
+            .replace("m/", "");
+
+        let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
         let desc = wrap_in_script_type(script_type, &script);
+
+        let desc = Descriptors::try_from_line(&desc)?;
+        Ok(desc)
+    }
+}
+
+impl TryFrom<WasabiJson> for Descriptors {
+    type Error = Error;
+
+    fn try_from(json: WasabiJson) -> Result<Self, Self::Error> {
+        let fingerprint = json.master_fingerprint.to_ascii_lowercase();
+        let derivation_path = "84h/0h/0h";
+        let xpub = json.ext_pub_key;
+
+        let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
+        let desc = wrap_in_script_type(Name::P2wpkh, &script);
+
+        println!("wasabi desc: {}", desc);
 
         let desc = Descriptors::try_from_line(&desc)?;
         Ok(desc)
@@ -115,7 +144,6 @@ mod tests {
     "xfp": "8DFECFC3",
     "deriv": "m/84h/0h/0h",
     "xpub": "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM",
-    "desc": "wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/<0;1>/*)#60tjs4c7",
     "_pub": "zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1",
     "first": "bc1q0g0vn4yqyk0zjwxw0zv5pltyyczty004zc9g7r"
         }"#;
@@ -125,7 +153,7 @@ mod tests {
         let desc = "wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/<0;1>/*)#60tjs4c7";
         let desc = Descriptors::try_from_line(desc).unwrap();
 
-        let parse_desc = Descriptors::try_from(single_sig);
+        let parse_desc = Descriptors::try_from_single_sig(single_sig, Some("817E7BE0"));
 
         assert!(parse_desc.is_ok());
         let parse_desc = parse_desc.unwrap();
@@ -135,5 +163,25 @@ mod tests {
 
         assert_eq!(parse_desc.external.to_string(), desc.external.to_string());
         assert_eq!(parse_desc.internal.to_string(), desc.internal.to_string());
+    }
+
+    #[test]
+    fn test_parse_wasabi() {
+        let json = r#"{
+            "ColdCardFirmwareVersion": "5.4.0",
+            "MasterFingerprint": "817E7BE0",
+            "ExtPubKey": "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM"
+        }"#;
+
+        let json = serde_json::from_str::<WasabiJson>(json).unwrap();
+        let desc = Descriptors::try_from(json);
+
+        assert!(desc.is_ok());
+        let desc = desc.unwrap();
+        let known_desc = "wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/<0;1>/*)#60tjs4c7";
+        let known_desc = Descriptors::try_from_line(known_desc).unwrap();
+
+        assert_eq!(desc.external, known_desc.external);
+        assert_eq!(desc.internal, known_desc.internal);
     }
 }
