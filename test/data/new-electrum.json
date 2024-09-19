@@ -1,0 +1,14 @@
+{
+  "seed_version": 17,
+  "use_encryption": false,
+  "wallet_type": "standard",
+  "keystore": {
+    "type": "hardware",
+    "hw_type": "coldcard",
+    "label": "Coldcard Import 817E7BE0",
+    "ckcc_xfp": 3766189697,
+    "ckcc_xpub": "xpub661MyMwAqRbcFFr2SGY3dUn7g8P9VKNZdKWL2Z2pZMEkBWH2D1KTcwTn7keZQCaScCx7BUDjHFJJHnzBvDgUFgNjYsQTRvo7LWfYEtt78Pb",
+    "derivation": "m/84h/0h/0h",
+    "xpub": "zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1"
+  }
+}
