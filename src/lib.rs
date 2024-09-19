@@ -1,3 +1,7 @@
+pub mod formats;
+pub mod json;
+pub mod zpub;
+
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
 }
