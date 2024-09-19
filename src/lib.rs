@@ -12,18 +12,42 @@
 //!
 //! - Single Sig
 //!
-//! # Example
+//! # Examples
 //!
 //! ```rust
 //! use pubport::Format;
 //!
-//! let string = std::fs::read_to_string("test/data/coldcard-export.json").unwrap();
+//! let string = std::fs::read_to_string("test/data/sparrow-export.json").unwrap();
 //! let format = Format::try_new_from_str(&string);
 //!
 //! assert!(format.is_ok());
 //!
 //! let format = format.unwrap();
-//! matches!(format, Format::Json(_));
+//! assert!(matches!(format, Format::Json(_)));
+//! ```
+//!
+//! ```rust
+//! use pubport::Format;
+//!
+//! let string = std::fs::read_to_string("test/data/descriptor.txt").unwrap();
+//! let format = Format::try_new_from_str(&string);
+//!
+//! assert!(format.is_ok());
+//!
+//! let format = format.unwrap();
+//! assert!(matches!(format, Format::Descriptor(_)));
+//! ```
+//!
+//! ```rust
+//! use pubport::Format;
+//!
+//! let string = std::fs::read_to_string("test/data/new-wasabi.json").unwrap();
+//! let format = Format::try_new_from_str(&string);
+//!
+//! assert!(format.is_ok());
+//!
+//! let format = format.unwrap();
+//! assert!(matches!(format, Format::Wasabi(_)));
 //! ```
 
 pub mod descriptors;
