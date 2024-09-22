@@ -53,10 +53,6 @@ impl Xpub {
         xpub_to_fingerprint(&self.xpub)
     }
 
-    pub fn to_string(self) -> String {
-        self.xpub
-    }
-
     pub fn as_str(&self) -> &str {
         self.xpub.as_str()
     }
@@ -70,7 +66,7 @@ impl TryFrom<&str> for Xpub {
             "zpub" => (zpub_to_xpub(xpub)?, OriginalFormat::Zpub),
             "ypub" => (ypub_to_xpub(xpub)?, OriginalFormat::Ypub),
             "xpub" => (xpub.to_string(), OriginalFormat::Xpub),
-            starting => return Err(Error::NotXpub(starting.to_string()).into()),
+            starting => return Err(Error::NotXpub(starting.to_string())),
         };
 
         Ok(Self {
