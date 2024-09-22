@@ -2,7 +2,7 @@ use std::str::FromStr as _;
 
 use bitcoin::{
     base58,
-    bip32::{Fingerprint, Xpub},
+    bip32::{Fingerprint, Xpub as Bip32Xpub},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -24,6 +24,29 @@ pub enum Error {
 
     #[error("Too short, only {0} chars long")]
     TooShort(usize),
+
+    #[error("Missing xpub")]
+    MissingXpub,
+}
+
+#[derive(Debug, Clone)]
+pub struct Xpub {
+    pub xpub: String,
+}
+
+impl TryFrom<&str> for Xpub {
+    type Error = Error;
+
+    fn try_from(xpub: &str) -> Result<Self, Self::Error> {
+        let xpub = match &xpub[..4] {
+            "zpub" => zpub_to_xpub(xpub)?,
+            "ypub" => ypub_to_xpub(xpub)?,
+            "xpub" => xpub.to_string(),
+            starting => return Err(Error::NotXpub(starting.to_string()).into()),
+        };
+
+        Ok(Self { xpub })
+    }
 }
 
 pub fn zpub_to_xpub(zpub: &str) -> Result<String, Error> {
@@ -58,7 +81,7 @@ pub fn ypub_to_xpub(ypub: &str) -> Result<String, Error> {
 }
 
 pub fn xpub_to_fingerprint(xpub: &str) -> Result<Fingerprint, Error> {
-    let extended_pubkey = Xpub::from_str(xpub).map_err(Error::InvalidXpub)?;
+    let extended_pubkey = Bip32Xpub::from_str(xpub).map_err(Error::InvalidXpub)?;
     let fingerprint = match extended_pubkey.parent_fingerprint.as_bytes() {
         [0, 0, 0, 0] => extended_pubkey.fingerprint(),
         _ => extended_pubkey.parent_fingerprint,
