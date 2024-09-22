@@ -95,6 +95,18 @@ impl Descriptors {
         let desc = Descriptors::try_from_line(&desc)?;
         Ok(desc)
     }
+
+    pub fn try_from_xpub(xpub: &str) -> Result<Self, Error> {
+        let xpub = xpub::Xpub::try_from(xpub)?;
+        let fingerprint = xpub.fingerprint()?.to_string();
+        let derivation_path = "84h/0h/0h";
+
+        let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
+        let desc = wrap_in_script_type(Name::P2wpkh, &script);
+
+        let desc = Descriptors::try_from_line(&desc)?;
+        Ok(desc)
+    }
 }
 
 impl TryFrom<WasabiJson> for Descriptors {
@@ -170,7 +182,7 @@ impl TryFrom<&str> for Descriptors {
     type Error = Error;
 
     fn try_from(desc: &str) -> Result<Self, Self::Error> {
-        let lines = desc
+        let lines = des
             .trim()
             .split('\n')
             .filter(|line| !line.is_empty())
@@ -384,5 +396,20 @@ mod tests {
 
         assert_eq!(desc.external.to_string(), known_desc().external.to_string());
         assert_eq!(desc.internal.to_string(), known_desc().internal.to_string());
+    }
+
+    #[test]
+    fn test_parse_xpub() {
+        let string = "zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1".to_string();
+        let desc = Descriptors::try_from_xpub(&string);
+
+        assert!(desc.is_ok());
+        let desc = desc.unwrap();
+
+        println!("{}", desc.external.to_string());
+        println!("{}", known_desc().external.to_string());
+
+        assert_eq!(desc.external, known_desc().external);
+        assert_eq!(desc.internal, known_desc().internal);
     }
 }

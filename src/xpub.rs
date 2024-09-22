@@ -29,9 +29,15 @@ pub enum Error {
     MissingXpub,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
 pub struct Xpub {
     pub xpub: String,
+}
+
+impl Xpub {
+    pub fn fingerprint(&self) -> Result<Fingerprint, Error> {
+        xpub_to_fingerprint(&self.xpub)
+    }
 }
 
 impl TryFrom<&str> for Xpub {
@@ -107,6 +113,6 @@ mod tests {
         let ypub = "ypub6X2aUb9NXbQM65mQy6oFECSB1CdSanwXHGTUcw7vt2LaAteuYtLoDQ6ao1fXDsenrZjgJKJyHvLypBBeo59cSKUivvwW8S6k7PVvQkVosxZ";
         let xpub = "xpub6CCKAvUTNursEnaJ8k1d27LfqEUzeAx2N9wFqYE3W1xh7nqgJEBEbLSSmohwDxzsSvcsYqiQqFzRvta65Njbe5o84bF5YXHFqfSH2Dkhonm";
 
-        assert_eq!(ypub_to_xpub(ypub).unwrap(), xpub);
+        assert_eq!(, xpub);
     }
 }
