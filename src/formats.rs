@@ -4,6 +4,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub enum Format {
     Descriptor(Descriptors),
     Json(Json),
@@ -27,6 +28,7 @@ pub enum Error {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct Json {
     pub bip44: Option<Descriptors>,
     pub bip49: Option<Descriptors>,

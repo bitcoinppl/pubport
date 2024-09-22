@@ -81,3 +81,6 @@ pub type Format = formats::Format;
 pub fn parse_from_str(string: &str) -> Result<formats::Format, formats::Error> {
     formats::Format::try_new_from_str(string)
 }
+
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!();

@@ -39,6 +39,7 @@ pub enum Error {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct Descriptors {
     pub external: Descriptor<DescriptorPublicKey>,
     pub internal: Descriptor<DescriptorPublicKey>,
@@ -94,6 +95,21 @@ impl Descriptors {
 
         let desc = Descriptors::try_from_line(&desc)?;
         Ok(desc)
+    }
+}
+
+#[cfg(feature = "uniffi")]
+mod ffi {
+    use super::Descriptors;
+
+    impl Descriptors {
+        pub fn external(&self) -> String {
+            self.external.to_string()
+        }
+
+        pub fn internal(&self) -> String {
+            self.internal.to_string()
+        }
     }
 }
 
