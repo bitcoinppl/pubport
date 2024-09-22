@@ -29,14 +29,36 @@ pub enum Error {
     MissingXpub,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Xpub {
-    pub xpub: String,
+    xpub: String,
+    original_format: OriginalFormat,
+}
+
+impl std::fmt::Display for Xpub {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.xpub)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+pub enum OriginalFormat {
+    Zpub,
+    Ypub,
+    Xpub,
 }
 
 impl Xpub {
     pub fn fingerprint(&self) -> Result<Fingerprint, Error> {
         xpub_to_fingerprint(&self.xpub)
+    }
+
+    pub fn to_string(self) -> String {
+        self.xpub
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.xpub.as_str()
     }
 }
 
@@ -44,14 +66,17 @@ impl TryFrom<&str> for Xpub {
     type Error = Error;
 
     fn try_from(xpub: &str) -> Result<Self, Self::Error> {
-        let xpub = match &xpub[..4] {
-            "zpub" => zpub_to_xpub(xpub)?,
-            "ypub" => ypub_to_xpub(xpub)?,
-            "xpub" => xpub.to_string(),
+        let (xpub, original_format) = match &xpub[..4] {
+            "zpub" => (zpub_to_xpub(xpub)?, OriginalFormat::Zpub),
+            "ypub" => (ypub_to_xpub(xpub)?, OriginalFormat::Ypub),
+            "xpub" => (xpub.to_string(), OriginalFormat::Xpub),
             starting => return Err(Error::NotXpub(starting.to_string()).into()),
         };
 
-        Ok(Self { xpub })
+        Ok(Self {
+            xpub,
+            original_format,
+        })
     }
 }
 
@@ -103,16 +128,24 @@ mod tests {
     #[test]
     fn test_zpub_to_xpub() {
         let zpub = "zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1";
-        let xpub = "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM";
+        let xpub_str = "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM";
+        let xpub = Xpub::try_from(zpub);
 
-        assert_eq!(zpub_to_xpub(zpub).unwrap(), xpub);
+        assert!(xpub.is_ok());
+        let xpub = xpub.unwrap();
+
+        assert_eq!(xpub.xpub, xpub_str);
     }
 
     #[test]
     fn test_ypub_to_xpub() {
         let ypub = "ypub6X2aUb9NXbQM65mQy6oFECSB1CdSanwXHGTUcw7vt2LaAteuYtLoDQ6ao1fXDsenrZjgJKJyHvLypBBeo59cSKUivvwW8S6k7PVvQkVosxZ";
-        let xpub = "xpub6CCKAvUTNursEnaJ8k1d27LfqEUzeAx2N9wFqYE3W1xh7nqgJEBEbLSSmohwDxzsSvcsYqiQqFzRvta65Njbe5o84bF5YXHFqfSH2Dkhonm";
+        let xpub_str = "xpub6CCKAvUTNursEnaJ8k1d27LfqEUzeAx2N9wFqYE3W1xh7nqgJEBEbLSSmohwDxzsSvcsYqiQqFzRvta65Njbe5o84bF5YXHFqfSH2Dkhonm";
+        let xpub = Xpub::try_from(ypub);
 
-        assert_eq!(, xpub);
+        assert!(xpub.is_ok());
+        let xpub = xpub.unwrap();
+
+        assert_eq!(xpub.xpub, xpub_str);
     }
 }
