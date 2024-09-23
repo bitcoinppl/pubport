@@ -1,3 +1,4 @@
+use bitcoin::bip32::Fingerprint;
 use miniscript::{descriptor::DescriptorKeyParseError, Descriptor, DescriptorPublicKey};
 
 use crate::{
@@ -95,6 +96,21 @@ impl Descriptors {
 
         let desc = Descriptors::try_from_line(&desc)?;
         Ok(desc)
+    }
+
+    pub fn fingerprint(&self) -> Option<Fingerprint> {
+        let desc = &self.external;
+
+        let inner = match desc {
+            Descriptor::Pkh(pkh) => Some(pkh.as_inner()),
+            Descriptor::Wpkh(wpkh) => Some(wpkh.as_inner()),
+            Descriptor::Wsh(_) => None,
+            Descriptor::Sh(_) => None,
+            Descriptor::Tr(_) => None,
+            Descriptor::Bare(_) => None,
+        }?;
+
+        Some(inner.master_fingerprint())
     }
 }
 
