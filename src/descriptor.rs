@@ -38,7 +38,7 @@ pub enum Error {
     #[error("Unable to parse xpub: {0:?}")]
     InvalidXpub(#[from] xpub::Error),
 
-    #[error("Unable to get xpub from descriptor: {0:?}")]
+    #[error("Unable to get xpub from descriptor")]
     NoXpubInDescriptor
 }
 
@@ -276,6 +276,25 @@ mod tests {
 
         assert_eq!(desc.external, external);
         assert_eq!(desc.internal, internal);
+    }
+
+
+    #[test]
+    fn test_fingerprint_getter() {
+        let single_sig = r#"{
+    "name": "p2wpkh",
+    "xfp": "8DFECFC3",
+    "deriv": "m/84h/0h/0h",
+    "xpub": "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM",
+    "desc": "wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/<0;1>/*)#60tjs4c7",
+    "_pub": "zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1",
+    "first": "bc1q0g0vn4yqyk0zjwxw0zv5pltyyczty004zc9g7r"
+        }"#;
+
+        let single_sig: SingleSig = serde_json::from_str(single_sig).unwrap();
+        let parse_desc = Descriptors::try_from_single_sig(single_sig, None).unwrap();
+
+        assert_eq!(parse_desc.fingerprint().unwrap().to_string().to_uppercase().as_str(), "817E7BE0");
     }
 
     #[test]
