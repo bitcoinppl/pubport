@@ -37,6 +37,9 @@ pub enum Error {
 
     #[error("Unable to parse xpub: {0:?}")]
     InvalidXpub(#[from] xpub::Error),
+
+    #[error("Unable to get xpub from descriptor: {0:?}")]
+    NoXpubInDescriptor
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +114,21 @@ impl Descriptors {
         }?;
 
         Some(inner.master_fingerprint())
+    }
+    
+    pub fn xpub(&self) -> Result<String, Error> {
+        let desc = &self.external;
+
+        let xpub = match desc {
+            Descriptor::Pkh(pkh) => pkh.as_inner().to_string(),
+            Descriptor::Wpkh(wpkh) => wpkh.as_inner().to_string(),
+            Descriptor::Wsh(_) => return Err(Error::NoXpubInDescriptor),
+            Descriptor::Sh(_) => return Err(Error::NoXpubInDescriptor),
+            Descriptor::Tr(_) => return Err(Error::NoXpubInDescriptor),
+            Descriptor::Bare(_) => return Err(Error::NoXpubInDescriptor),
+        };
+
+        Ok(xpub)
     }
 }
 
