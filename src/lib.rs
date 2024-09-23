@@ -71,7 +71,7 @@
 //! assert!(matches!(format, Format::Electrum(_)));
 //! ```
 
-pub mod descriptors;
+pub mod descriptor;
 pub mod formats;
 pub mod json;
 pub mod xpub;

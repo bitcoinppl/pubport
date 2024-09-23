@@ -1,5 +1,5 @@
 use crate::{
-    descriptors::{self, Descriptors},
+    descriptor::{self, Descriptors},
     json::{self, GenericJson},
 };
 
@@ -15,7 +15,7 @@ pub enum Format {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Invalid descriptor: {0:?}")]
-    InvalidDescriptor(#[from] descriptors::Error),
+    InvalidDescriptor(#[from] descriptor::Error),
 
     #[error("Invalid json: {0}")]
     InvalidJsonParse(#[from] serde_json::Error),
