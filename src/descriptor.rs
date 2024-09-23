@@ -38,8 +38,14 @@ pub enum Error {
     #[error("Unable to parse xpub: {0:?}")]
     InvalidXpub(#[from] xpub::Error),
 
+    #[error("Unable to parse xpub: {0}")]
+    UnableToParseXpub(bitcoin::bip32::Error),
+
     #[error("Unable to get xpub from descriptor")]
-    NoXpubInDescriptor
+    NoXpubInDescriptor,
+
+    #[error("Single pubkey is not supported, must be an extended key")]
+    SinglePubkeyNotSupported,
 }
 
 #[derive(Debug, Clone)]
@@ -115,17 +121,23 @@ impl Descriptors {
 
         Some(inner.master_fingerprint())
     }
-    
-    pub fn xpub(&self) -> Result<String, Error> {
+
+    pub fn xpub(&self) -> Result<bitcoin::bip32::Xpub, Error> {
         let desc = &self.external;
 
-        let xpub = match desc {
-            Descriptor::Pkh(pkh) => pkh.as_inner().to_string(),
-            Descriptor::Wpkh(wpkh) => wpkh.as_inner().to_string(),
+        let inner = match desc {
+            Descriptor::Pkh(pkh) => pkh.as_inner(),
+            Descriptor::Wpkh(wpkh) => wpkh.as_inner(),
             Descriptor::Wsh(_) => return Err(Error::NoXpubInDescriptor),
             Descriptor::Sh(_) => return Err(Error::NoXpubInDescriptor),
             Descriptor::Tr(_) => return Err(Error::NoXpubInDescriptor),
             Descriptor::Bare(_) => return Err(Error::NoXpubInDescriptor),
+        };
+
+        let xpub: bitcoin::bip32::Xpub = match inner {
+            DescriptorPublicKey::XPub(inner) => inner.xkey,
+            DescriptorPublicKey::MultiXPub(inner) => inner.xkey,
+            DescriptorPublicKey::Single(_) => return Err(Error::SinglePubkeyNotSupported),
         };
 
         Ok(xpub)
@@ -278,7 +290,6 @@ mod tests {
         assert_eq!(desc.internal, internal);
     }
 
-
     #[test]
     fn test_fingerprint_getter() {
         let single_sig = r#"{
@@ -294,7 +305,15 @@ mod tests {
         let single_sig: SingleSig = serde_json::from_str(single_sig).unwrap();
         let parse_desc = Descriptors::try_from_single_sig(single_sig, None).unwrap();
 
-        assert_eq!(parse_desc.fingerprint().unwrap().to_string().to_uppercase().as_str(), "817E7BE0");
+        assert_eq!(
+            parse_desc
+                .fingerprint()
+                .unwrap()
+                .to_string()
+                .to_uppercase()
+                .as_str(),
+            "817E7BE0"
+        );
     }
 
     #[test]
@@ -448,5 +467,13 @@ mod tests {
 
         assert_eq!(desc.external.to_string(), known_desc().external.to_string());
         assert_eq!(desc.internal.to_string(), known_desc().internal.to_string());
+    }
+
+    #[test]
+    fn test_xpub_output() {
+        let know_desc = known_desc();
+        let xpub = know_desc.xpub();
+
+        assert!(xpub.is_ok());
     }
 }
