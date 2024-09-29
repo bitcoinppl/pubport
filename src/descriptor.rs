@@ -14,8 +14,8 @@ pub enum Error {
     #[error("Single descriptor line did not contain both external and internal keys")]
     MissingKeys,
 
-    #[error("Too many keys in descriptor, only supports 1 external and 1 internal key")]
-    TooManyKeys,
+    #[error("Too many keys in descriptor, only supports 1 external and 1 internal key, found {0}")]
+    TooManyKeys(usize),
 
     #[error("Unable to parse descriptor: {0}")]
     InvalidDescriptorParse(#[from] miniscript::Error),
@@ -69,8 +69,8 @@ impl Descriptors {
 
         match multi.len() {
             2 => (),
-            1 => return Err(Error::MissingKeys),
-            _ => return Err(Error::TooManyKeys),
+            0 | 1 => return Err(Error::MissingKeys),
+            n => return Err(Error::TooManyKeys(n)),
         };
 
         Ok(Self {
@@ -252,7 +252,8 @@ impl TryFrom<&str> for Descriptors {
                     internal: internal_desc,
                 })
             }
-            _ => Err(Error::TooManyKeys),
+            0 => Err(Error::MissingDescriptor),
+            n => Err(Error::TooManyKeys(n)),
         }
     }
 }
