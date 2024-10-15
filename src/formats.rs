@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{
     descriptor::{self, Descriptors},
     json::{self, GenericJson},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub enum Format {
     Descriptor(Descriptors),
@@ -27,7 +29,7 @@ pub enum Error {
     JsonNoDecriptor,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct Json {
     pub bip44: Option<Descriptors>,

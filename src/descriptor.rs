@@ -1,5 +1,6 @@
 use bitcoin::bip32::Fingerprint;
 use miniscript::{descriptor::DescriptorKeyParseError, Descriptor, DescriptorPublicKey};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     json::{ElectrumJson, Name, SingleSig, WasabiJson},
@@ -48,10 +49,18 @@ pub enum Error {
     SinglePubkeyNotSupported,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct Descriptors {
+    #[serde(
+        serialize_with = "serialize_descriptor",
+        deserialize_with = "deserialize_descriptor"
+    )]
     pub external: Descriptor<DescriptorPublicKey>,
+    #[serde(
+        serialize_with = "serialize_descriptor",
+        deserialize_with = "deserialize_descriptor"
+    )]
     pub internal: Descriptor<DescriptorPublicKey>,
 }
 
@@ -264,6 +273,31 @@ fn wrap_in_script_type(script_type: Name, script: &str) -> String {
         Name::P2shP2wpkh => format!("sh(wpkh({}))", script),
         Name::P2wpkh => format!("wpkh({})", script),
     }
+}
+
+fn serialize_descriptor<S>(
+    descriptor: &Descriptor<DescriptorPublicKey>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let desc = descriptor.to_string();
+    serializer.serialize_str(&desc)
+}
+
+fn deserialize_descriptor<'de, D>(
+    deserializer: D,
+) -> Result<Descriptor<DescriptorPublicKey>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let secp = &secp256k1::Secp256k1::signing_only();
+    let desc = String::deserialize(deserializer)?;
+    let (descriptor, _) = Descriptor::<DescriptorPublicKey>::parse_descriptor(secp, desc.as_str())
+        .map_err(serde::de::Error::custom)?;
+
+    Ok(descriptor)
 }
 
 #[cfg(test)]
