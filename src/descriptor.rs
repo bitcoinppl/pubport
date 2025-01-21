@@ -21,6 +21,9 @@ pub enum Error {
     #[error("Unable to parse descriptor: {0}")]
     InvalidDescriptorParse(#[from] miniscript::Error),
 
+    #[error("Invalid JSON descriptor: {0}")]
+    InvalidJsonDescriptor(#[from] serde_json::Error),
+
     #[error("Missing descriptor")]
     MissingDescriptor,
 
@@ -47,6 +50,11 @@ pub enum Error {
 
     #[error("Single pubkey is not supported, must be an extended key")]
     SinglePubkeyNotSupported,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JsonDescriptor {
+    descriptor: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -242,6 +250,15 @@ impl TryFrom<&str> for Descriptors {
             .filter(|line| !line.is_empty())
             .map(|line| line.trim())
             .collect::<Vec<&str>>();
+
+        if let Some(line) = lines.first() {
+            // json descriptor
+            if line.trim().starts_with('{') {
+                let json: JsonDescriptor =
+                    serde_json::from_str(desc).map_err(Error::InvalidJsonDescriptor)?;
+                return Self::try_from_line(&json.descriptor);
+            }
+        }
 
         match lines.len() {
             1 => Descriptors::try_from_line(lines[0]),
@@ -510,5 +527,20 @@ mod tests {
         let xpub = know_desc.xpub();
 
         assert!(xpub.is_ok());
+        assert!(xpub.unwrap().to_string().starts_with("xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM"));
+    }
+
+    #[test]
+    fn test_get_master_fingerprint() {
+        let know_desc = known_desc();
+        let master_fingerprint = know_desc.fingerprint().unwrap();
+        assert_eq!(master_fingerprint.to_string().as_str(), "817e7be0");
+    }
+
+    #[test]
+    fn test_json_descriptor() {
+        let json_descriptor = r##"{   "label": "test1",   "blockheight": 607985,   "descriptor": "wpkh([73c5da0a/84h/0h/0h]xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V/<0;1>/*)" }"##;
+        let desc = Descriptors::try_from(json_descriptor);
+        assert!(desc.is_ok());
     }
 }
