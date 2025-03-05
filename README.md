@@ -1,9 +1,15 @@
 # PubPort
 
+<p>
+    <a href="https://crates.io/crates/pubport"><img alt="Crate Info" src="https://img.shields.io/crates/v/pubport.svg"/></a>
+    <a href="https://github.com/bitcoinppl/pubport/blob/master/LICENSE"><img alt="Apache-2.0 Licensed" src="https://img.shields.io/badge/Apache--2.0-blue.svg"/></a>
+    <a href="https://github.com/bitcoinppl/pubport/actions?query=workflow%3ACI"><img alt="CI Status" src="https://github.com/bitcoinppl/pubport/workflows/CI/badge.svg"></a>
+    <a href="https://docs.rs/pubport"><img alt="Docs" src="https://img.shields.io/badge/docs.rs-green"/></a>
+</p>
+
 <!-- cargo-rdme start -->
 
 A tool to import a wallet public key with descriptors from many different formats seamlessly
-
 
 ## Supported formats
 
@@ -19,6 +25,7 @@ A tool to import a wallet public key with descriptors from many different format
 ## Examples
 
 ### Import in generic JSON format used by many wallets
+
 ```rust
 use pubport::Format;
 
@@ -33,7 +40,7 @@ assert!(matches!(format, Format::Json(_)));
 
 ### Import from file containing descriptors
 
-***note: need external and internal descriptors, but can be single descriptor or multiple descriptor format***
+**_note: need external and internal descriptors, but can be single descriptor or multiple descriptor format_**
 
 ```rust
 use pubport::Format;
