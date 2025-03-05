@@ -31,7 +31,7 @@ pub enum Error {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Xpub {
-    xpub: String,
+    xpub: Bip32Xpub,
     original_format: OriginalFormat,
 }
 
@@ -49,12 +49,8 @@ pub enum OriginalFormat {
 }
 
 impl Xpub {
-    pub fn fingerprint(&self) -> Result<Fingerprint, Error> {
+    pub fn master_fingerprint(&self) -> Result<Fingerprint, Error> {
         xpub_to_fingerprint(&self.xpub)
-    }
-
-    pub fn as_str(&self) -> &str {
-        self.xpub.as_str()
     }
 }
 
@@ -70,7 +66,7 @@ impl TryFrom<&str> for Xpub {
         };
 
         Ok(Self {
-            xpub,
+            xpub: Bip32Xpub::from_str(&xpub)?,
             original_format,
         })
     }
@@ -107,19 +103,24 @@ pub fn ypub_to_xpub(ypub: &str) -> Result<String, Error> {
     Ok(xpub)
 }
 
-pub fn xpub_to_fingerprint(xpub: &str) -> Result<Fingerprint, Error> {
-    let extended_pubkey = Bip32Xpub::from_str(xpub).map_err(Error::InvalidXpub)?;
-    let fingerprint = match extended_pubkey.parent_fingerprint.as_bytes() {
-        [0, 0, 0, 0] => extended_pubkey.fingerprint(),
-        _ => extended_pubkey.parent_fingerprint,
+pub fn xpub_to_fingerprint(xpub: &Bip32Xpub) -> Result<Fingerprint, Error> {
+    let fingerprint = match xpub.parent_fingerprint.as_bytes() {
+        [0, 0, 0, 0] => xpub.fingerprint(),
+        _ => xpub.parent_fingerprint,
     };
+    Ok(fingerprint)
+}
 
+pub fn xpub_str_to_fingerprint(xpub: &str) -> Result<Fingerprint, Error> {
+    let xpub = Bip32Xpub::from_str(xpub)?;
+    let fingerprint = xpub_to_fingerprint(&xpub)?;
     Ok(fingerprint)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_zpub_to_xpub() {
@@ -130,7 +131,7 @@ mod tests {
         assert!(xpub.is_ok());
         let xpub = xpub.unwrap();
 
-        assert_eq!(xpub.xpub, xpub_str);
+        assert_eq!(xpub.xpub.to_string(), xpub_str);
     }
 
     #[test]
@@ -142,6 +143,6 @@ mod tests {
         assert!(xpub.is_ok());
         let xpub = xpub.unwrap();
 
-        assert_eq!(xpub.xpub, xpub_str);
+        assert_eq!(xpub.xpub.to_string().as_str(), xpub_str);
     }
 }

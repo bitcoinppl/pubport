@@ -1,3 +1,9 @@
+use std::str::FromStr as _;
+
+use crate::{
+    descriptor::{Descriptors, ScriptType},
+    formats::Json,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,7 +50,7 @@ pub struct Keystore {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SingleSig {
     #[serde(default)]
-    pub name: Option<Name>,
+    pub name: Option<ScriptType>,
     #[serde(default)]
     pub xfp: Option<String>,
     #[serde(default)]
@@ -58,17 +64,21 @@ pub struct SingleSig {
     pub first: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Name {
-    /// BIP44
-    P2pkh,
+impl Json {
+    pub fn try_from_child_xpub(string: &str) -> Result<Self, crate::Error> {
+        let xpub =
+            bitcoin::bip32::Xpub::from_str(string).map_err(crate::xpub::Error::InvalidXpub)?;
 
-    /// BIP49
-    P2shP2wpkh,
+        let bip44 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2pkh)?;
+        let bip49 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2shP2wpkh)?;
+        let bip84 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2wpkh)?;
 
-    /// BIP84
-    P2wpkh,
+        Ok(Self {
+            bip44: Some(bip44),
+            bip49: Some(bip49),
+            bip84: Some(bip84),
+        })
+    }
 }
 
 #[cfg(test)]
