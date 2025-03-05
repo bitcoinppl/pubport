@@ -5,6 +5,12 @@ edition = "2021"
 license = "Apache-2.0"
 description = "A library for parsing hardware wallet export formats"
 
+repository = "https://github.com/bitcoinppl/pubport"
+keywords = ["bitcoin"]
+
+homepage = "https://github.com/bitcoinppl/pubport"
+documentation = "https://docs.rs/pubport"
+
 [features]
 default = []
 uniffi = ["dep:uniffi"]
