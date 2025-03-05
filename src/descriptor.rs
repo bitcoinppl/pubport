@@ -259,7 +259,10 @@ impl TryFrom<ElectrumJson> for Descriptors {
                 format!("{:08X}", xfp)
             }
             (None, Some(ck_xpub)) => xpub::xpub_str_to_fingerprint(ck_xpub)?.to_string(),
-            (None, None) => xpub.master_fingerprint()?.to_string(),
+            (None, None) => xpub
+                .master_fingerprint()
+                .ok_or(Error::NoXpubInDescriptor)?
+                .to_string(),
         };
 
         let derivation_path = keystore.derivation.replace("m/", "");

@@ -49,8 +49,17 @@ pub enum OriginalFormat {
 }
 
 impl Xpub {
-    pub fn master_fingerprint(&self) -> Result<Fingerprint, Error> {
-        xpub_to_fingerprint(&self.xpub)
+    pub fn master_fingerprint(&self) -> Option<Fingerprint> {
+        let fingerprint = xpub_to_fingerprint(&self.xpub).ok()?;
+        if fingerprint == Fingerprint::default() {
+            return None;
+        }
+
+        Some(fingerprint)
+    }
+
+    pub fn fingerprint(&self) -> Fingerprint {
+        self.xpub.fingerprint()
     }
 }
 
