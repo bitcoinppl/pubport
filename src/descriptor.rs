@@ -1,11 +1,15 @@
-use bitcoin::bip32::Fingerprint;
+mod script_type;
+
+use bitcoin::{bip32::Fingerprint, secp256k1};
 use miniscript::{descriptor::DescriptorKeyParseError, Descriptor, DescriptorPublicKey};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    json::{ElectrumJson, Name, SingleSig, WasabiJson},
+    json::{ElectrumJson, SingleSig, WasabiJson},
     xpub,
 };
+
+pub use script_type::ScriptType;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -50,6 +54,9 @@ pub enum Error {
 
     #[error("Single pubkey is not supported, must be an extended key")]
     SinglePubkeyNotSupported,
+
+    #[error("Xpub is a master key, please use the child xpub for the derivation path")]
+    MasterXpub,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,9 +125,28 @@ impl Descriptors {
             .replace("m/", "");
 
         let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
-        let desc = wrap_in_script_type(script_type, &script);
+        let desc = script_type.wrap_with(&script);
 
         let desc = Descriptors::try_from_line(&desc)?;
+        Ok(desc)
+    }
+
+    pub fn try_from_child_xpub(
+        xpub: bitcoin::bip32::Xpub,
+        script_type: ScriptType,
+    ) -> Result<Self, Error> {
+        if xpub.depth == 0 {
+            return Err(Error::MasterXpub);
+        }
+
+        let descriptor_derivation_path = script_type.descriptor_derivation_path();
+
+        // with just the child xpub we can't get the master fingerprint
+        let fingerprint = "00000000";
+        let desc_script = format!("[{fingerprint}/{descriptor_derivation_path}]{xpub}/<0;1>/*");
+        let desc_string = script_type.wrap_with(&desc_script);
+
+        let desc = Descriptors::try_from_line(&desc_string)?;
         Ok(desc)
     }
 
@@ -136,7 +162,12 @@ impl Descriptors {
             Descriptor::Bare(_) => None,
         }?;
 
-        Some(inner.master_fingerprint())
+        let fingerprint = inner.master_fingerprint();
+        if fingerprint == Fingerprint::default() {
+            return None;
+        }
+
+        Some(fingerprint)
     }
 
     pub fn xpub(&self) -> Result<bitcoin::bip32::Xpub, Error> {
@@ -185,7 +216,7 @@ impl TryFrom<WasabiJson> for Descriptors {
         let xpub = json.ext_pub_key;
 
         let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
-        let desc = wrap_in_script_type(Name::P2wpkh, &script);
+        let desc = ScriptType::P2wpkh.wrap_with(&script);
 
         let desc = Descriptors::try_from_line(&desc)?;
         Ok(desc)
@@ -200,15 +231,15 @@ impl TryFrom<ElectrumJson> for Descriptors {
 
         let mut script_type = None;
         if keystore.derivation.starts_with("m/84") {
-            script_type = Some(Name::P2wpkh);
+            script_type = Some(ScriptType::P2wpkh);
         }
 
         if keystore.derivation.starts_with("m/49") {
-            script_type = Some(Name::P2shP2wpkh);
+            script_type = Some(ScriptType::P2shP2wpkh);
         }
 
         if keystore.derivation.starts_with("m/44") {
-            script_type = Some(Name::P2pkh);
+            script_type = Some(ScriptType::P2pkh);
         }
 
         if script_type.is_none() {
@@ -227,13 +258,16 @@ impl TryFrom<ElectrumJson> for Descriptors {
                 let xfp = fingerprint.swap_bytes();
                 format!("{:08X}", xfp)
             }
-            (None, Some(ck_xpub)) => xpub::xpub_to_fingerprint(ck_xpub)?.to_string(),
-            (None, None) => xpub.fingerprint()?.to_string(),
+            (None, Some(ck_xpub)) => xpub::xpub_str_to_fingerprint(ck_xpub)?.to_string(),
+            (None, None) => xpub
+                .master_fingerprint()
+                .ok_or(Error::NoXpubInDescriptor)?
+                .to_string(),
         };
 
         let derivation_path = keystore.derivation.replace("m/", "");
         let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
-        let desc = wrap_in_script_type(script_type, &script);
+        let desc = script_type.wrap_with(&script);
 
         let desc = Descriptors::try_from_line(&desc)?;
         Ok(desc)
@@ -281,14 +315,6 @@ impl TryFrom<&str> for Descriptors {
             0 => Err(Error::MissingDescriptor),
             n => Err(Error::TooManyKeys(n)),
         }
-    }
-}
-
-fn wrap_in_script_type(script_type: Name, script: &str) -> String {
-    match script_type {
-        Name::P2pkh => format!("pkh({})", script),
-        Name::P2shP2wpkh => format!("sh(wpkh({}))", script),
-        Name::P2wpkh => format!("wpkh({})", script),
     }
 }
 

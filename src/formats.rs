@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     descriptor::{self, Descriptors},
     json::{self, GenericJson},
+    xpub,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -27,6 +28,9 @@ pub enum Error {
 
     #[error("Invalid json, no xpubs or descriptor")]
     JsonNoDecriptor,
+
+    #[error("Invalid xpub: {0}")]
+    InvalidXpub(#[from] xpub::Error),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -92,8 +96,12 @@ impl Format {
             }
         }
 
-        let desc = Descriptors::try_from(string)?;
-        Ok(Format::Descriptor(desc))
+        if let Ok(desc) = Descriptors::try_from(string) {
+            return Ok(Format::Descriptor(desc));
+        }
+
+        let json = Json::try_from_child_xpub(string)?;
+        Ok(Format::Json(json))
     }
 }
 
@@ -118,5 +126,12 @@ mod tests {
             let format = Format::try_new_from_str(&string);
             assert!(format.is_ok());
         }
+    }
+
+    #[test]
+    fn test_parse_with_base_xpub() {
+        let xpub = "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM";
+        let format = Format::try_new_from_str(xpub);
+        assert!(format.is_ok());
     }
 }
