@@ -16,9 +16,9 @@ pub enum ScriptType {
 impl ScriptType {
     pub fn descriptor_derivation_path(&self) -> &'static str {
         match self {
-            ScriptType::P2pkh => "44'/0'/0'/0",
-            ScriptType::P2shP2wpkh => "49'/0'/0'/0",
-            ScriptType::P2wpkh => "84'/0'/0'/0",
+            ScriptType::P2pkh => "44'/0'/0'",
+            ScriptType::P2shP2wpkh => "49'/0'",
+            ScriptType::P2wpkh => "84'/0'/0'",
         }
     }
 

@@ -345,7 +345,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr as _;
+
     use super::*;
+    use pretty_assertions::assert_eq;
 
     fn known_desc() -> Descriptors {
         let known_desc = "wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/<0;1>/*)#60tjs4c7";
@@ -568,5 +571,15 @@ mod tests {
         let json_descriptor = r##"{   "label": "test1",   "blockheight": 607985,   "descriptor": "wpkh([73c5da0a/84h/0h/0h]xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V/<0;1>/*)" }"##;
         let desc = Descriptors::try_from(json_descriptor);
         assert!(desc.is_ok());
+    }
+
+    #[test]
+    fn test_try_from_child_xpub() {
+        let xpub = bitcoin::bip32::Xpub::from_str("xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM").unwrap();
+        let desc = Descriptors::try_from_child_xpub(xpub, ScriptType::P2wpkh).unwrap();
+        let expected_desc = Descriptors::try_from_line("wpkh([00000000/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/<0;1>/*)").unwrap();
+
+        assert_eq!(desc.external, expected_desc.external);
+        assert_eq!(desc.internal, expected_desc.internal);
     }
 }
