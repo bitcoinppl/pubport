@@ -1,6 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.1] [2025-03-07]
+
+### Fixed
+
+- Incorrect descriptor derivation path, creating wrong change descriptor
+
+## [0.3.0] (YANKED) [2025-03-06]
 
 ### Added
 
