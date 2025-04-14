@@ -74,6 +74,7 @@
 pub mod descriptor;
 pub mod formats;
 pub mod json;
+pub mod key_expression;
 pub mod xpub;
 
 pub type Format = formats::Format;
