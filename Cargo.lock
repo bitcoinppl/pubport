@@ -318,6 +318,7 @@ dependencies = [
  "bitcoin",
  "derive_more",
  "log",
+ "memchr",
  "miniscript",
  "pretty_assertions",
  "serde",
