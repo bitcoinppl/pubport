@@ -72,7 +72,7 @@ pub struct KeyExpression {
     pub origin_derivation_path: Option<DerivationPath>,
 
     /// the derivation path if present after the xpub
-    pub derivation_path: Option<DerivationPath>,
+    pub xpub_derivation_path: Option<DerivationPath>,
 }
 
 impl KeyExpression {
@@ -103,7 +103,7 @@ impl KeyExpression {
             xpub,
             master_fingerprint,
             origin_derivation_path: origin_path,
-            derivation_path,
+            xpub_derivation_path: derivation_path,
         })
     }
 }
@@ -307,7 +307,7 @@ mod tests {
                 xpub: _,
                 master_fingerprint: Some(_),
                 origin_derivation_path: Some(_),
-                derivation_path: None,
+                xpub_derivation_path: None,
             }
         ));
     }
@@ -322,7 +322,7 @@ mod tests {
                 xpub: _,
                 master_fingerprint: Some(_),
                 origin_derivation_path: Some(_),
-                derivation_path: Some(_),
+                xpub_derivation_path: Some(_),
             }
         ));
     }
@@ -337,7 +337,7 @@ mod tests {
                 xpub: _,
                 master_fingerprint: Some(_),
                 origin_derivation_path: Some(_),
-                derivation_path: Some(_),
+                xpub_derivation_path: Some(_),
             }
         ));
     }
@@ -350,7 +350,7 @@ mod tests {
             result,
             KeyExpression {
                 xpub: _,
-                derivation_path: Some(_),
+                xpub_derivation_path: Some(_),
                 ..
             }
         ));
@@ -364,7 +364,7 @@ mod tests {
             result,
             KeyExpression {
                 xpub: _,
-                derivation_path: Some(_),
+                xpub_derivation_path: Some(_),
                 ..
             }
         ));
@@ -380,7 +380,7 @@ mod tests {
                 xpub: _,
                 master_fingerprint: Some(_),
                 origin_derivation_path: Some(_),
-                derivation_path: Some(_),
+                xpub_derivation_path: Some(_),
             }
         ));
     }
@@ -497,7 +497,7 @@ mod tests {
         let result = KeyExpression::try_from_str(input).unwrap();
 
         let derv_path = DerivationPath::from_str("3/4/5").unwrap();
-        assert_eq!(result.derivation_path, Some(derv_path));
+        assert_eq!(result.xpub_derivation_path, Some(derv_path));
     }
 
     #[test]
@@ -508,7 +508,7 @@ mod tests {
         let derv_path = DerivationPath::from_str("84'/0'/0'").unwrap();
 
         assert_eq!(result.origin_derivation_path, Some(derv_path));
-        assert_eq!(result.derivation_path, None);
+        assert_eq!(result.xpub_derivation_path, None);
 
         let children_as_u32 = result.origin_derivation_path.unwrap().to_u32_vec();
         assert_eq!(children_as_u32, vec![84 ^ (1 << 31), (1 << 31), (1 << 31)]);
