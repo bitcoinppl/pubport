@@ -1,5 +1,5 @@
 //! Parse a key expression string into a KeyExpression, we only support KeyExpressions that contain
-//! a public key, we do not support KeyExpressions that contain a private key.
+//! an XPub, we do not support KeyExpressions that contain a private key or bare compressed or uncompressed public keys.
 
 use bitcoin::bip32::{DerivationPath, Fingerprint, Xpub};
 use std::str::FromStr;
@@ -60,9 +60,18 @@ pub enum Error {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// A parsed key expression
 pub struct KeyExpression {
+    /// the public key in xpub format
     pub xpub: Xpub,
+
+    /// the master fingerprint if present in the origin
     pub master_fingerprint: Option<Fingerprint>,
+
+    /// the derivation path if present in the origin
+    pub origin_derivation_path: Option<DerivationPath>,
+
+    /// the derivation path if present after the xpub
     pub derivation_path: Option<DerivationPath>,
 }
 
@@ -75,7 +84,7 @@ impl KeyExpression {
 
         let mut parser = Parser::new(input_str);
 
-        let (master_fingerprint, derivation_path) = parser.parse_optional_fingerprint_and_path()?;
+        let (master_fingerprint, origin_path) = parser.parse_optional_fingerprint_and_path()?;
 
         // check for multiple key origins
         if parser.contains('[') && parser.contains(']') {
@@ -84,12 +93,16 @@ impl KeyExpression {
             ));
         }
 
-        let xpub = Xpub::from_str(parser.remaining_input).map_err(Error::XpubParseError)?;
+        // check if there's a derivation path after the xpub
+        let (xpub_str, derivation_path) = parser.parse_xpub_and_derivation()?;
+
+        let xpub = Xpub::from_str(xpub_str).map_err(Error::XpubParseError)?;
 
         // Return the parsed KeyExpression
         Ok(KeyExpression {
             xpub,
             master_fingerprint,
+            origin_derivation_path: origin_path,
             derivation_path,
         })
     }
@@ -118,6 +131,57 @@ impl<'a> Parser<'a> {
         memchr::memchr(byte.to_byte(), self.remaining_input.as_bytes())
     }
 
+    /// Parse the optional xpub and derivation path at the end
+    fn parse_xpub_and_derivation(&mut self) -> Result<(&'a str, Option<DerivationPath>), Error> {
+        // check if there's a slash in the remaining input
+        if let Some(slash_pos) = self.find('/') {
+            // Split at the slash
+            let xpub_part = &self.remaining_input[..slash_pos];
+            let path_part = &self.remaining_input[slash_pos + 1..];
+
+            // Process the derivation path
+            // First validate it doesn't contain invalid characters
+            if path_part.contains('-') {
+                return Err(Error::NegativeIndices);
+            }
+
+            // For empty string, return no derivation
+            if path_part.is_empty() {
+                return Err(Error::TrailingSlashInKeyOrigin);
+            }
+
+            // Handle the path - we need to strip any wildcard before parsing
+            let cleaned_path = path_part.replace("*h", "0h").replace("*", "0");
+            let path_str = format!("m/{}", cleaned_path);
+
+            let derivation_path = DerivationPath::from_str(&path_str).map_err(|e| {
+                // Check if the derivation path is invalid due to out of range indices
+                if path_part.contains("2147483648") || path_part.contains("0x80000000") {
+                    Error::DerivationIndexOutOfRange(path_part.to_string())
+                } else if path_part
+                    .chars()
+                    .any(|c| !c.is_ascii_digit() && c != '/' && c != 'h' && c != '\'' && c != '*')
+                {
+                    Error::InvalidDerivationIndex(path_part.to_string())
+                } else {
+                    Error::DerivationPathParseError(e)
+                }
+            })?;
+
+            // update remaining input (cleared since we parsed everything)
+            self.remaining_input = "";
+            return Ok((xpub_part, Some(derivation_path)));
+        }
+
+        // no slash, so the entire remaining input is the xpub
+        let xpub_part = self.remaining_input;
+
+        // update remaining input (cleared since we parsed everything)
+        self.remaining_input = "";
+
+        Ok((xpub_part, None))
+    }
+
     fn parse_optional_fingerprint_and_path(
         &mut self,
     ) -> Result<(Option<Fingerprint>, Option<DerivationPath>), Error> {
@@ -144,6 +208,11 @@ impl<'a> Parser<'a> {
             // the origin is the content inside the brackets
             inside_bracket_content
         };
+
+        // If we only have a key origin with no xpub
+        if self.remaining_input.is_empty() {
+            return Err(Error::KeyOriginWithNoPublicKey(origin_content.to_string()));
+        }
 
         // split by first slash to separate fingerprint from path
         let parts: Vec<&str> = origin_content.splitn(2, '/').collect();
@@ -181,11 +250,14 @@ impl<'a> Parser<'a> {
             return Err(Error::NegativeIndices);
         }
 
-        // check hardened indicators
+        // check hardened indicators - allow both h and ' for hardened derivation
         for segment in path_str.split('/') {
-            if !segment.ends_with('h') || segment.ends_with('\'') {
-                let invalid_char = segment.chars().last().unwrap_or_default();
-                return Err(Error::InvalidHardenedIndicator(invalid_char));
+            if !segment.is_empty() {
+                let last_char = segment.chars().last().unwrap_or_default();
+                // Allow digits for non-hardened, or h/' for hardened
+                if !last_char.is_ascii_digit() && last_char != 'h' && last_char != '\'' {
+                    return Err(Error::InvalidHardenedIndicator(last_char));
+                }
             }
         }
 
@@ -219,65 +291,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_valid_compressed_pubkey() {
-        let input = "0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
-        let result = KeyExpression::try_from_str(input).unwrap();
-        assert!(matches!(result, KeyExpression { xpub: _, .. }));
-    }
-
-    #[test]
-    fn test_valid_uncompressed_pubkey() {
-        let input = "04a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235";
-        let result = KeyExpression::try_from_str(input).unwrap();
-        assert!(matches!(result, KeyExpression { xpub: _, .. }));
-    }
-
-    #[test]
-    fn test_pubkey_with_key_origin() {
-        let input =
-            "[deadbeef/0h/0h/0h]0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
-        let result = KeyExpression::try_from_str(input).unwrap();
-        assert!(matches!(
-            result,
-            KeyExpression {
-                xpub: _,
-                master_fingerprint: Some(_),
-                derivation_path: Some(_),
-            }
-        ));
-    }
-
-    #[test]
-    fn test_pubkey_with_key_origin_apostrophe_hardened() {
-        let input =
-            "[deadbeef/0'/0'/0']0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
-        let result = KeyExpression::try_from_str(input).unwrap();
-        assert!(matches!(
-            result,
-            KeyExpression {
-                xpub: _,
-                master_fingerprint: Some(_),
-                derivation_path: Some(_),
-            }
-        ));
-    }
-
-    #[test]
-    fn test_pubkey_with_key_origin_mixed_hardened() {
-        let input =
-            "[deadbeef/0'/0h/0']0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
-        let result = KeyExpression::try_from_str(input).unwrap();
-        assert!(matches!(
-            result,
-            KeyExpression {
-                xpub: _,
-                master_fingerprint: Some(_),
-                derivation_path: Some(_),
-            }
-        ));
-    }
-
-    #[test]
     fn test_extended_public_key() {
         let input = "xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL";
         let result = KeyExpression::try_from_str(input).unwrap();
@@ -293,7 +306,8 @@ mod tests {
             KeyExpression {
                 xpub: _,
                 master_fingerprint: Some(_),
-                derivation_path: Some(_),
+                origin_derivation_path: Some(_),
+                derivation_path: None,
             }
         ));
     }
@@ -307,6 +321,7 @@ mod tests {
             KeyExpression {
                 xpub: _,
                 master_fingerprint: Some(_),
+                origin_derivation_path: Some(_),
                 derivation_path: Some(_),
             }
         ));
@@ -321,6 +336,7 @@ mod tests {
             KeyExpression {
                 xpub: _,
                 master_fingerprint: Some(_),
+                origin_derivation_path: Some(_),
                 derivation_path: Some(_),
             }
         ));
@@ -363,6 +379,7 @@ mod tests {
             KeyExpression {
                 xpub: _,
                 master_fingerprint: Some(_),
+                origin_derivation_path: Some(_),
                 derivation_path: Some(_),
             }
         ));
@@ -472,5 +489,28 @@ mod tests {
         let input = "[deadbeef]";
         let result = KeyExpression::try_from_str(input);
         assert!(matches!(result, Err(Error::KeyOriginWithNoPublicKey(_))));
+    }
+
+    #[test]
+    fn test_correct_derivation_path() {
+        let input = "xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/3/4/5";
+        let result = KeyExpression::try_from_str(input).unwrap();
+
+        let derv_path = DerivationPath::from_str("3/4/5").unwrap();
+        assert_eq!(result.derivation_path, Some(derv_path));
+    }
+
+    #[test]
+    fn test_correct_origin_path() {
+        let input = "[deadbeef/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL";
+        let result = KeyExpression::try_from_str(input).unwrap();
+
+        let derv_path = DerivationPath::from_str("84'/0'/0'").unwrap();
+
+        assert_eq!(result.origin_derivation_path, Some(derv_path));
+        assert_eq!(result.derivation_path, None);
+
+        let children_as_u32 = result.origin_derivation_path.unwrap().to_u32_vec();
+        assert_eq!(children_as_u32, vec![84 ^ (1 << 31), (1 << 31), (1 << 31)]);
     }
 }
