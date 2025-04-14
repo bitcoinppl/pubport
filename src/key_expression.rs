@@ -2,7 +2,7 @@ use bitcoin::bip32::{DerivationPath, Fingerprint, Xpub};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyExpression {
-    pub xpub: Option<Xpub>,
+    pub xpub: Xpub,
     pub master_fingerprint: Option<Fingerprint>,
     pub derivation_path: Option<DerivationPath>,
 }
@@ -22,7 +22,7 @@ mod tests {
         let input = "0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
         assert!(matches!(
             KeyExpression::try_from_str(input),
-            KeyExpression { xpub: Some(_), .. }
+            KeyExpression { xpub: _, .. }
         ));
     }
 
@@ -31,7 +31,7 @@ mod tests {
         let input = "04a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235";
         assert!(matches!(
             KeyExpression::try_from_str(input),
-            KeyExpression { xpub: Some(_), .. }
+            KeyExpression { xpub: _, .. }
         ));
     }
 
@@ -42,7 +42,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 master_fingerprint: Some(_),
                 derivation_path: Some(_),
             }
@@ -56,7 +56,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 master_fingerprint: Some(_),
                 derivation_path: Some(_),
             }
@@ -70,7 +70,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 master_fingerprint: Some(_),
                 derivation_path: Some(_),
             }
@@ -82,7 +82,7 @@ mod tests {
         let input = "5KYZdUEo39z3FPrtuX2QbbwGnNP5zTd7yyr2SC1j299sBCnWjss";
         assert!(matches!(
             KeyExpression::try_from_str(input),
-            KeyExpression { xpub: Some(_), .. }
+            KeyExpression { xpub: _, .. }
         ));
     }
 
@@ -91,7 +91,7 @@ mod tests {
         let input = "L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1";
         assert!(matches!(
             KeyExpression::try_from_str(input),
-            KeyExpression { xpub: Some(_), .. }
+            KeyExpression { xpub: _, .. }
         ));
     }
 
@@ -100,7 +100,7 @@ mod tests {
         let input = "xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL";
         assert!(matches!(
             KeyExpression::try_from_str(input),
-            KeyExpression { xpub: Some(_), .. }
+            KeyExpression { xpub: _, .. }
         ));
     }
 
@@ -110,7 +110,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 master_fingerprint: Some(_),
                 derivation_path: Some(_),
             }
@@ -123,7 +123,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 master_fingerprint: Some(_),
                 derivation_path: Some(_),
             }
@@ -136,7 +136,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 master_fingerprint: Some(_),
                 derivation_path: Some(_),
             }
@@ -149,7 +149,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 derivation_path: Some(_),
                 ..
             }
@@ -162,7 +162,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 derivation_path: Some(_),
                 ..
             }
@@ -175,7 +175,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 master_fingerprint: Some(_),
                 derivation_path: Some(_),
             }
@@ -187,7 +187,7 @@ mod tests {
         let input = "xprvA1RpRA33e1JQ7ifknakTFpgNXPmW2YvmhqLQYMmrj4xJXXWYpDPS3xz7iAxn8L39njGVyuoseXzU6rcxFLJ8HFsTjSyQbLYnMpCqE2VbFWc";
         assert!(matches!(
             KeyExpression::try_from_str(input),
-            KeyExpression { xpub: Some(_), .. }
+            KeyExpression { xpub: _, .. }
         ));
     }
 
@@ -197,7 +197,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 master_fingerprint: Some(_),
                 derivation_path: Some(_),
             }
@@ -210,7 +210,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 master_fingerprint: Some(_),
                 derivation_path: Some(_),
             }
@@ -223,7 +223,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 master_fingerprint: Some(_),
                 derivation_path: Some(_),
             }
@@ -236,7 +236,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 derivation_path: Some(_),
                 ..
             }
@@ -249,7 +249,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 derivation_path: Some(_),
                 ..
             }
@@ -262,7 +262,7 @@ mod tests {
         assert!(matches!(
             KeyExpression::try_from_str(input),
             KeyExpression {
-                xpub: Some(_),
+                xpub: _,
                 master_fingerprint: Some(_),
                 derivation_path: Some(_),
             }
@@ -270,11 +270,9 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_invalid_children_indicator_in_key_origin() {
         let input = "[deadbeef/0h/0h/0h/*]0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
-        assert!(matches!(
-            KeyExpression::try_from_str(input),
-            KeyExpression { xpub: None, .. }
-        ));
+        KeyExpression::try_from_str(input);
     }
 }
