@@ -1,5 +1,60 @@
 use bitcoin::bip32::{DerivationPath, Fingerprint, Xpub};
-use std::error::Error;
+use thiserror::Error;
+
+/// Errors that can occur when parsing a key expression
+#[derive(Debug, Error)]
+pub enum KeyExpressionError {
+    #[error("Invalid key origin format")]
+    InvalidKeyOrigin,
+    
+    #[error("Children indicator not allowed in key origin: {0}")]
+    ChildrenIndicatorInKeyOrigin(String),
+    
+    #[error("Trailing slash in key origin: {0}")]
+    TrailingSlashInKeyOrigin(String),
+    
+    #[error("Invalid fingerprint length (must be 8 characters): {0}")]
+    InvalidFingerprintLength(String),
+    
+    #[error("Invalid hardened indicator, must be 'h' or \"'\": {0}")]
+    InvalidHardenedIndicator(String),
+    
+    #[error("Negative indices are not allowed: {0}")]
+    NegativeIndices(String),
+    
+    #[error("WIF private keys cannot have derivation paths: {0}")]
+    PrivateKeyWithDerivation(String),
+    
+    #[error("Derivation index out of range: {0}")]
+    DerivationIndexOutOfRange(String),
+    
+    #[error("Invalid derivation index (must be a number): {0}")]
+    InvalidDerivationIndex(String),
+    
+    #[error("Multiple key origins are not allowed: {0}")]
+    MultipleKeyOrigins(String),
+    
+    #[error("Missing key origin start bracket: {0}")]
+    MissingKeyOriginStart(String),
+    
+    #[error("Non-hexadecimal fingerprint: {0}")]
+    NonHexFingerprint(String),
+    
+    #[error("Key origin with no public key: {0}")]
+    KeyOriginWithNoPublicKey(String),
+    
+    #[error("Failed to parse Xpub: {0}")]
+    XpubParseError(#[from] bitcoin::bip32::Error),
+    
+    #[error("Failed to parse fingerprint: {0}")]
+    FingerprintParseError(String),
+    
+    #[error("Failed to parse derivation path: {0}")]
+    DerivationPathParseError(String),
+    
+    #[error("Unexpected error: {0}")]
+    Other(String),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyExpression {
@@ -9,7 +64,7 @@ pub struct KeyExpression {
 }
 
 impl KeyExpression {
-    pub fn try_from_str(input: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn try_from_str(input: &str) -> Result<Self, KeyExpressionError> {
         todo!()
     }
 }
@@ -276,6 +331,105 @@ mod tests {
     #[test]
     fn test_invalid_children_indicator_in_key_origin() {
         let input = "[deadbeef/0h/0h/0h/*]0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
-        assert!(KeyExpression::try_from_str(input).is_err());
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::ChildrenIndicatorInKeyOrigin(_))));
+    }
+
+    #[test]
+    fn test_invalid_trailing_slash_in_key_origin() {
+        let input = "[deadbeef/0h/0h/0h/]0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::TrailingSlashInKeyOrigin(_))));
+    }
+
+    #[test]
+    fn test_invalid_too_short_fingerprint() {
+        let input = "[deadbef/0h/0h/0h]0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::InvalidFingerprintLength(_))));
+    }
+
+    #[test]
+    fn test_invalid_too_long_fingerprint() {
+        let input = "[deadbeeef/0h/0h/0h]0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::InvalidFingerprintLength(_))));
+    }
+
+    #[test]
+    fn test_invalid_hardened_indicators_f() {
+        let input = "[deadbeef/0f/0f/0f]0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::InvalidHardenedIndicator(_))));
+    }
+
+    #[test]
+    fn test_invalid_hardened_indicators_capital_h() {
+        let input = "[deadbeef/0H/0H/0H]0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::InvalidHardenedIndicator(_))));
+    }
+
+    #[test]
+    fn test_invalid_negative_indices() {
+        let input = "[deadbeef/-0/-0/-0]0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::NegativeIndices(_))));
+    }
+
+    #[test]
+    fn test_invalid_private_key_with_derivation() {
+        let input = "L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1/0";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::PrivateKeyWithDerivation(_))));
+    }
+
+    #[test]
+    fn test_invalid_private_key_with_derivation_children() {
+        let input = "L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1/*";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::PrivateKeyWithDerivation(_))));
+    }
+
+    #[test]
+    fn test_invalid_derivation_index_out_of_range() {
+        let input = "xprv9s21ZrQH143K31xYSDQpPDxsXRTUcvj2iNHm5NUtrGiGG5e2DtALGdso3pGz6ssrdK4PFmM8NSpSBHNqPqm55Qn3LqFtT2emdEXVYsCzC2U/2147483648";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::DerivationIndexOutOfRange(_))));
+    }
+
+    #[test]
+    fn test_invalid_derivation_index_non_numeric() {
+        let input = "xprv9s21ZrQH143K31xYSDQpPDxsXRTUcvj2iNHm5NUtrGiGG5e2DtALGdso3pGz6ssrdK4PFmM8NSpSBHNqPqm55Qn3LqFtT2emdEXVYsCzC2U/1aa";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::InvalidDerivationIndex(_))));
+    }
+
+    #[test]
+    fn test_invalid_multiple_key_origins() {
+        let input = "[aaaaaaaa][aaaaaaaa]xprv9s21ZrQH143K31xYSDQpPDxsXRTUcvj2iNHm5NUtrGiGG5e2DtALGdso3pGz6ssrdK4PFmM8NSpSBHNqPqm55Qn3LqFtT2emdEXVYsCzC2U/2147483647'/0";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::MultipleKeyOrigins(_))));
+    }
+
+    #[test]
+    fn test_invalid_missing_key_origin_start() {
+        let input = "aaaaaaaa]xprv9s21ZrQH143K31xYSDQpPDxsXRTUcvj2iNHm5NUtrGiGG5e2DtALGdso3pGz6ssrdK4PFmM8NSpSBHNqPqm55Qn3LqFtT2emdEXVYsCzC2U/2147483647'/0";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::MissingKeyOriginStart(_))));
+    }
+
+    #[test]
+    fn test_invalid_non_hex_fingerprint() {
+        let input = "[gaaaaaaa]xprv9s21ZrQH143K31xYSDQpPDxsXRTUcvj2iNHm5NUtrGiGG5e2DtALGdso3pGz6ssrdK4PFmM8NSpSBHNqPqm55Qn3LqFtT2emdEXVYsCzC2U/2147483647'/0";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::NonHexFingerprint(_))));
+    }
+
+    #[test]
+    fn test_invalid_key_origin_with_no_public_key() {
+        let input = "[deadbeef]";
+        let result = KeyExpression::try_from_str(input);
+        assert!(matches!(result, Err(KeyExpressionError::KeyOriginWithNoPublicKey(_))));
     }
 }
