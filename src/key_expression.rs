@@ -28,12 +28,6 @@ pub enum Error {
     #[error("Negative indices are not allowed")]
     NegativeIndices,
 
-    #[error("WIF private keys cannot have derivation paths")]
-    PrivateKeyWithDerivation,
-
-    #[error("Derivation index out of range: {0}")]
-    DerivationIndexOutOfRange(String),
-
     #[error("Multiple key origins are not allowed")]
     MultipleKeyOrigins(String),
 
@@ -51,9 +45,6 @@ pub enum Error {
 
     #[error("Failed to parse derivation path: {0}")]
     DerivationPathParseError(bitcoin::bip32::Error),
-
-    #[error("Unexpected error: {0}")]
-    UnexpectedError(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
