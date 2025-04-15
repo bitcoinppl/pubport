@@ -214,6 +214,7 @@ impl<'a> Parser<'a> {
         let fingerprint = Fingerprint::from_str(fingerprint_str)
             .map_err(|_| Error::NonHexFingerprint(fingerprint_str.to_string()))?;
 
+        // no origin derivation path
         if parts.len() == 1 {
             return Ok((Some(fingerprint), None));
         }
@@ -314,7 +315,12 @@ mod tests {
     #[test]
     fn test_extended_public_key_with_derivation_and_children() {
         let input = "[deadbeef/0h/1h/2h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/3/4/5/*";
+        let fingerprint = Fingerprint::from_str("deadbeef").unwrap();
+        let derivation_path = DerivationPath::from_str("0h/1h/2h").unwrap();
+        let xpub = Xpub::from_str("xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL").unwrap();
+        let path = "3/4/5/*".to_string();
         let result = KeyExpression::try_from_str(input).unwrap();
+
         assert!(matches!(
             result,
             KeyExpression {
@@ -324,6 +330,11 @@ mod tests {
                 xpub_derivation_path: Some(_),
             }
         ));
+
+        assert_eq!(result.xpub, xpub);
+        assert_eq!(result.origin_derivation_path, Some(derivation_path));
+        assert_eq!(result.xpub_derivation_path, Some(path));
+        assert_eq!(result.master_fingerprint, Some(fingerprint));
     }
 
     #[test]
