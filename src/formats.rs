@@ -136,4 +136,11 @@ mod tests {
         let format = Format::try_new_from_str(xpub);
         assert!(format.is_ok());
     }
+
+    #[test]
+    fn test_parse_krux() {
+        let string = std::fs::read_to_string("test/data/krux.txt").unwrap();
+        let krux = KeyExpression::try_from_str(&string);
+        assert!(krux.is_ok());
+    }
 }

@@ -68,6 +68,8 @@ pub enum Error {
 impl KeyExpression {
     /// Parse a key expression string into a KeyExpression struct using winnow
     pub fn try_from_str(input_str: &str) -> Result<Self, Error> {
+        let input_str = input_str.trim();
+
         if !input_str.is_ascii() {
             return Err(Error::NotAsciiDigits);
         }
