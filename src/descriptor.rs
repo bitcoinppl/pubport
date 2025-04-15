@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     json::{ElectrumJson, SingleSig, WasabiJson},
+    key_expression::KeyExpression,
     xpub,
 };
 
@@ -57,6 +58,12 @@ pub enum Error {
 
     #[error("Xpub is a master key, please use the child xpub for the derivation path")]
     MasterXpub,
+
+    #[error("ScriptType parse error: {0}")]
+    ScriptTypeParseError(#[from] script_type::Error),
+
+    #[error("Creating descriptor from key expression requires a master fingerprint and origin derivation path")]
+    MissingKeyExpressionFields,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,6 +155,24 @@ impl Descriptors {
 
         let desc = Descriptors::try_from_line(&desc_string)?;
         Ok(desc)
+    }
+
+    pub fn try_from_key_expression(key_expression: &KeyExpression) -> Result<Self, Error> {
+        if let KeyExpression {
+            xpub,
+            master_fingerprint: Some(master_fingerprint),
+            origin_derivation_path: Some(path),
+            xpub_derivation_path: _,
+        } = key_expression
+        {
+            let script_type = ScriptType::try_from_derivation_path(path)?;
+            let script = format!("[{master_fingerprint}/{path}]{xpub}/<0;1>/*");
+            let desc = script_type.wrap_with(&script);
+
+            return Descriptors::try_from_line(&desc);
+        }
+
+        Err(Error::MissingKeyExpressionFields)
     }
 
     pub fn fingerprint(&self) -> Option<Fingerprint> {
@@ -581,5 +606,43 @@ mod tests {
 
         assert_eq!(desc.external, expected_desc.external);
         assert_eq!(desc.internal, expected_desc.internal);
+    }
+
+    #[test]
+    fn test_try_from_key_expression() {
+        let input = "[deadbeef/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL";
+        let result =
+            Descriptors::try_from_key_expression(&KeyExpression::try_from_str(input).unwrap());
+
+        let test_desc = Descriptors::try_from_line("wpkh([deadbeef/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/<0;1>/*)").unwrap();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), test_desc);
+    }
+
+    #[test]
+    fn test_try_from_key_expression_bip_44() {
+        let input = "[deadbeef/44h/1h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/3/4/5";
+        let test_desc = Descriptors::try_from_line("pkh([deadbeef/44h/1h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/<0;1>/*)").unwrap();
+        let desc =
+            Descriptors::try_from_key_expression(&KeyExpression::try_from_str(input).unwrap())
+                .unwrap();
+
+        assert_eq!(desc.internal.to_string(), test_desc.internal.to_string());
+        assert_eq!(desc.external.to_string(), test_desc.external.to_string());
+        assert_eq!(desc, test_desc);
+    }
+
+    #[test]
+    fn test_try_from_key_expression_bip_49() {
+        let input = "[deadbeef/49h/10h/20h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/*";
+        let test_desc = Descriptors::try_from_line("sh(wpkh([deadbeef/49h/10h/20h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/<0;1>/*))").unwrap();
+        let desc =
+            Descriptors::try_from_key_expression(&KeyExpression::try_from_str(input).unwrap())
+                .unwrap();
+
+        assert_eq!(desc.internal.to_string(), test_desc.internal.to_string());
+        assert_eq!(desc.external.to_string(), test_desc.external.to_string());
+        assert_eq!(desc, test_desc);
     }
 }

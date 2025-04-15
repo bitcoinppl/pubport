@@ -65,10 +65,14 @@ pub struct SingleSig {
 }
 
 impl Json {
-    pub fn try_from_child_xpub(string: &str) -> Result<Self, crate::Error> {
+    pub fn try_from_child_xpub_str(string: &str) -> Result<Self, crate::Error> {
         let xpub =
             bitcoin::bip32::Xpub::from_str(string).map_err(crate::xpub::Error::InvalidXpub)?;
 
+        Self::try_from_child_xpub(xpub)
+    }
+
+    pub fn try_from_child_xpub(xpub: bitcoin::bip32::Xpub) -> Result<Self, crate::Error> {
         let bip44 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2pkh)?;
         let bip49 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2shP2wpkh)?;
         let bip84 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2wpkh)?;

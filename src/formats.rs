@@ -14,7 +14,7 @@ pub enum Format {
     Json(Json),
     Wasabi(Descriptors),
     Electrum(Descriptors),
-    KeyExpression(KeyExpression),
+    KeyExpression(Descriptors),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -102,7 +102,16 @@ impl Format {
             return Ok(Format::Descriptor(desc));
         }
 
-        let json = Json::try_from_child_xpub(string)?;
+        if let Ok(key_expression) = KeyExpression::try_from_str(string) {
+            if let Ok(desc) = Descriptors::try_from_key_expression(&key_expression) {
+                return Ok(Format::KeyExpression(desc));
+            }
+
+            let json = Json::try_from_child_xpub(key_expression.xpub)?;
+            return Ok(Format::Json(json));
+        }
+
+        let json = Json::try_from_child_xpub_str(string)?;
         Ok(Format::Json(json))
     }
 }
