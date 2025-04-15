@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     descriptor::{self, Descriptors},
     json::{self, GenericJson},
+    key_expression::KeyExpression,
     xpub,
 };
 
@@ -13,6 +14,7 @@ pub enum Format {
     Json(Json),
     Wasabi(Descriptors),
     Electrum(Descriptors),
+    KeyExpression(KeyExpression),
 }
 
 #[derive(Debug, thiserror::Error)]

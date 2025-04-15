@@ -2,7 +2,25 @@
 //! an XPub, we do not support KeyExpressions that contain a private key or bare compressed or uncompressed public keys.
 
 use bitcoin::bip32::{DerivationPath, Fingerprint, Xpub};
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
+/// A parsed key expression
+pub struct KeyExpression {
+    /// the public key in xpub format
+    pub xpub: Xpub,
+
+    /// the master fingerprint if present in the origin
+    pub master_fingerprint: Option<Fingerprint>,
+
+    /// the derivation path if present in the origin
+    pub origin_derivation_path: Option<DerivationPath>,
+
+    /// the derivation path if present after the xpub
+    /// string to allow representing wildcard paths
+    pub xpub_derivation_path: Option<String>,
+}
 
 /// Errors that can occur when parsing a key expression
 #[derive(Debug, thiserror::Error)]
@@ -45,23 +63,6 @@ pub enum Error {
 
     #[error("Failed to parse derivation path: {0}")]
     DerivationPathParseError(bitcoin::bip32::Error),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-/// A parsed key expression
-pub struct KeyExpression {
-    /// the public key in xpub format
-    pub xpub: Xpub,
-
-    /// the master fingerprint if present in the origin
-    pub master_fingerprint: Option<Fingerprint>,
-
-    /// the derivation path if present in the origin
-    pub origin_derivation_path: Option<DerivationPath>,
-
-    /// the derivation path if present after the xpub
-    /// string to allow representing wildcard paths
-    pub xpub_derivation_path: Option<String>,
 }
 
 impl KeyExpression {
