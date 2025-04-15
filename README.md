@@ -18,7 +18,8 @@ A tool to import a wallet public key with descriptors from many different format
 - Wasabi
 - JSON
 - Bare XPUB
-- BIP380 Key Expressions (XPUBs only not private keys or bare compressed or uncompressed public keys)
+- BIP380 Key Expressions
+  - note: XPUBs only, key expressions with private keys, bare compressed or uncompressed public keys are not supported)
 
 ## Supported descriptors
 
