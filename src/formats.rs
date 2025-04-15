@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     descriptor::{self, Descriptors},
     json::{self, GenericJson},
+    key_expression::KeyExpression,
     xpub,
 };
 
@@ -13,6 +14,7 @@ pub enum Format {
     Json(Json),
     Wasabi(Descriptors),
     Electrum(Descriptors),
+    KeyExpression(KeyExpression),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -133,5 +135,12 @@ mod tests {
         let xpub = "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM";
         let format = Format::try_new_from_str(xpub);
         assert!(format.is_ok());
+    }
+
+    #[test]
+    fn test_parse_krux() {
+        let string = std::fs::read_to_string("test/data/krux.txt").unwrap();
+        let krux = KeyExpression::try_from_str(&string);
+        assert!(krux.is_ok());
     }
 }
