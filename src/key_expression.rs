@@ -34,9 +34,6 @@ pub enum Error {
     #[error("Derivation index out of range: {0}")]
     DerivationIndexOutOfRange(String),
 
-    #[error("Invalid derivation index (must be a number), found {0}")]
-    InvalidDerivationIndex(String),
-
     #[error("Multiple key origins are not allowed")]
     MultipleKeyOrigins(String),
 
@@ -72,7 +69,8 @@ pub struct KeyExpression {
     pub origin_derivation_path: Option<DerivationPath>,
 
     /// the derivation path if present after the xpub
-    pub xpub_derivation_path: Option<DerivationPath>,
+    /// string to allow representing wildcard paths
+    pub xpub_derivation_path: Option<String>,
 }
 
 impl KeyExpression {
@@ -98,7 +96,6 @@ impl KeyExpression {
 
         let xpub = Xpub::from_str(xpub_str).map_err(Error::XpubParseError)?;
 
-        // Return the parsed KeyExpression
         Ok(KeyExpression {
             xpub,
             master_fingerprint,
@@ -124,7 +121,7 @@ impl<'a> Parser<'a> {
     }
 
     fn contains(&self, byte: impl ToByte) -> bool {
-        memchr::memchr(byte.to_byte(), self.remaining_input.as_bytes()).is_some()
+        self.find(byte).is_some()
     }
 
     fn find(&self, byte: impl ToByte) -> Option<usize> {
@@ -132,20 +129,20 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse the optional xpub and derivation path at the end
-    fn parse_xpub_and_derivation(&mut self) -> Result<(&'a str, Option<DerivationPath>), Error> {
+    fn parse_xpub_and_derivation(&mut self) -> Result<(&'a str, Option<String>), Error> {
         // check if there's a slash in the remaining input
         if let Some(slash_pos) = self.find('/') {
             // Split at the slash
             let xpub_part = &self.remaining_input[..slash_pos];
             let path_part = &self.remaining_input[slash_pos + 1..];
 
-            // Process the derivation path
-            // First validate it doesn't contain invalid characters
+            // process the derivation path
+            // first validate it doesn't contain invalid characters
             if path_part.contains('-') {
                 return Err(Error::NegativeIndices);
             }
 
-            // For empty string, return no derivation
+            // for empty string, return no derivation
             if path_part.is_empty() {
                 return Err(Error::TrailingSlashInKeyOrigin);
             }
@@ -154,23 +151,14 @@ impl<'a> Parser<'a> {
             let cleaned_path = path_part.replace("*h", "0h").replace("*", "0");
             let path_str = format!("m/{}", cleaned_path);
 
-            let derivation_path = DerivationPath::from_str(&path_str).map_err(|e| {
-                // Check if the derivation path is invalid due to out of range indices
-                if path_part.contains("2147483648") || path_part.contains("0x80000000") {
-                    Error::DerivationIndexOutOfRange(path_part.to_string())
-                } else if path_part
-                    .chars()
-                    .any(|c| !c.is_ascii_digit() && c != '/' && c != 'h' && c != '\'' && c != '*')
-                {
-                    Error::InvalidDerivationIndex(path_part.to_string())
-                } else {
-                    Error::DerivationPathParseError(e)
-                }
-            })?;
+            // verify the derivation path is valid
+            DerivationPath::from_str(&path_str).map_err(Error::DerivationPathParseError)?;
+
+            let path_string = path_part.to_string();
 
             // update remaining input (cleared since we parsed everything)
             self.remaining_input = "";
-            return Ok((xpub_part, Some(derivation_path)));
+            return Ok((xpub_part, Some(path_string)));
         }
 
         // no slash, so the entire remaining input is the xpub
@@ -453,14 +441,14 @@ mod tests {
     fn test_invalid_derivation_index_out_of_range() {
         let input = "xprv9s21ZrQH143K31xYSDQpPDxsXRTUcvj2iNHm5NUtrGiGG5e2DtALGdso3pGz6ssrdK4PFmM8NSpSBHNqPqm55Qn3LqFtT2emdEXVYsCzC2U/2147483648";
         let result = KeyExpression::try_from_str(input);
-        assert!(matches!(result, Err(Error::DerivationIndexOutOfRange(_))));
+        assert!(matches!(result, Err(Error::DerivationPathParseError(_))));
     }
 
     #[test]
     fn test_invalid_derivation_index_non_numeric() {
         let input = "xprv9s21ZrQH143K31xYSDQpPDxsXRTUcvj2iNHm5NUtrGiGG5e2DtALGdso3pGz6ssrdK4PFmM8NSpSBHNqPqm55Qn3LqFtT2emdEXVYsCzC2U/1aa";
         let result = KeyExpression::try_from_str(input);
-        assert!(matches!(result, Err(Error::InvalidDerivationIndex(_))));
+        assert!(matches!(result, Err(Error::DerivationPathParseError(_))));
     }
 
     #[test]
@@ -495,9 +483,7 @@ mod tests {
     fn test_correct_derivation_path() {
         let input = "xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/3/4/5";
         let result = KeyExpression::try_from_str(input).unwrap();
-
-        let derv_path = DerivationPath::from_str("3/4/5").unwrap();
-        assert_eq!(result.xpub_derivation_path, Some(derv_path));
+        assert_eq!(result.xpub_derivation_path, Some("3/4/5".to_string()));
     }
 
     #[test]
