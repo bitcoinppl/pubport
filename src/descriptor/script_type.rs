@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ScriptType {
-    /// BIP44
+    /// BIP44 [44h/0h/0h]
     P2pkh,
 
-    /// BIP49
+    /// BIP49 [49h/0h/0h]
     P2shP2wpkh,
 
-    /// BIP84
+    /// BIP84 [84h/0h/0h]
     P2wpkh,
 }
 
