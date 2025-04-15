@@ -607,4 +607,42 @@ mod tests {
         assert_eq!(desc.external, expected_desc.external);
         assert_eq!(desc.internal, expected_desc.internal);
     }
+
+    #[test]
+    fn test_try_from_key_expression() {
+        let input = "[deadbeef/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL";
+        let result =
+            Descriptors::try_from_key_expression(&KeyExpression::try_from_str(input).unwrap());
+
+        let test_desc = Descriptors::try_from_line("wpkh([deadbeef/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/<0;1>/*)").unwrap();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), test_desc);
+    }
+
+    #[test]
+    fn test_try_from_key_expression_bip_44() {
+        let input = "[deadbeef/44h/1h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/3/4/5";
+        let test_desc = Descriptors::try_from_line("pkh([deadbeef/44h/1h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/<0;1>/*)").unwrap();
+        let desc =
+            Descriptors::try_from_key_expression(&KeyExpression::try_from_str(input).unwrap())
+                .unwrap();
+
+        assert_eq!(desc.internal.to_string(), test_desc.internal.to_string());
+        assert_eq!(desc.external.to_string(), test_desc.external.to_string());
+        assert_eq!(desc, test_desc);
+    }
+
+    #[test]
+    fn test_try_from_key_expression_bip_49() {
+        let input = "[deadbeef/49h/10h/20h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/*";
+        let test_desc = Descriptors::try_from_line("sh(wpkh([deadbeef/49h/10h/20h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/<0;1>/*))").unwrap();
+        let desc =
+            Descriptors::try_from_key_expression(&KeyExpression::try_from_str(input).unwrap())
+                .unwrap();
+
+        assert_eq!(desc.internal.to_string(), test_desc.internal.to_string());
+        assert_eq!(desc.external.to_string(), test_desc.external.to_string());
+        assert_eq!(desc, test_desc);
+    }
 }
