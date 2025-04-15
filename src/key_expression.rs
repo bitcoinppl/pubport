@@ -73,7 +73,8 @@ impl KeyExpression {
 
         let mut parser = Parser::new(input_str);
 
-        let (master_fingerprint, origin_path) = parser.parse_optional_fingerprint_and_path()?;
+        let (master_fingerprint, origin_path) =
+            parser.parse_optional_fingerprint_and_origin_path()?;
 
         // check for multiple key origins
         if parser.contains('[') && parser.contains(']') {
@@ -123,7 +124,7 @@ impl<'a> Parser<'a> {
     fn parse_xpub_and_derivation(&mut self) -> Result<(&'a str, Option<String>), Error> {
         // check if there's a slash in the remaining input
         if let Some(slash_pos) = self.find('/') {
-            // Split at the slash
+            // split at the slash
             let xpub_part = &self.remaining_input[..slash_pos];
             let path_part = &self.remaining_input[slash_pos + 1..];
 
@@ -161,7 +162,7 @@ impl<'a> Parser<'a> {
         Ok((xpub_part, None))
     }
 
-    fn parse_optional_fingerprint_and_path(
+    fn parse_optional_fingerprint_and_origin_path(
         &mut self,
     ) -> Result<(Option<Fingerprint>, Option<DerivationPath>), Error> {
         if !self.starts_with('[') && self.contains(']') {
@@ -233,7 +234,8 @@ impl<'a> Parser<'a> {
         for segment in path_str.split('/') {
             if !segment.is_empty() {
                 let last_char = segment.chars().last().unwrap_or_default();
-                // Allow digits for non-hardened, or h/' for hardened
+
+                // allow digits for non-hardened, or h/' for hardened
                 if !last_char.is_ascii_digit() && last_char != 'h' && last_char != '\'' {
                     return Err(Error::InvalidHardenedIndicator(last_char));
                 }
@@ -475,6 +477,15 @@ mod tests {
         let input = "xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/3/4/5";
         let result = KeyExpression::try_from_str(input).unwrap();
         assert_eq!(result.xpub_derivation_path, Some("3/4/5".to_string()));
+    }
+
+    #[test]
+    fn test_nothing_after_slash() {
+        let input = "xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/";
+        assert!(matches!(
+            KeyExpression::try_from_str(input),
+            Err(Error::TrailingSlashInKeyOrigin)
+        ));
     }
 
     #[test]
