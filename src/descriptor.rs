@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     json::{ElectrumJson, SingleSig, WasabiJson},
+    key_expression::KeyExpression,
     xpub,
 };
 
@@ -57,6 +58,12 @@ pub enum Error {
 
     #[error("Xpub is a master key, please use the child xpub for the derivation path")]
     MasterXpub,
+
+    #[error("ScriptType parse error: {0}")]
+    ScriptTypeParseError(#[from] script_type::Error),
+
+    #[error("Creating descriptor from key expression requires a master fingerprint and origin derivation path")]
+    MissingKeyExpressionFields,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,6 +155,24 @@ impl Descriptors {
 
         let desc = Descriptors::try_from_line(&desc_string)?;
         Ok(desc)
+    }
+
+    pub fn try_from_key_expression(key_expression: &KeyExpression) -> Result<Self, Error> {
+        if let KeyExpression {
+            xpub,
+            master_fingerprint: Some(master_fingerprint),
+            origin_derivation_path: Some(path),
+            xpub_derivation_path: _,
+        } = key_expression
+        {
+            let script_type = ScriptType::try_from_derivation_path(path)?;
+            let script = format!("[{master_fingerprint}/{path}]{xpub}/<0;1>/*");
+            let desc = script_type.wrap_with(&script);
+
+            return Descriptors::try_from_line(&desc);
+        }
+
+        Err(Error::MissingKeyExpressionFields)
     }
 
     pub fn fingerprint(&self) -> Option<Fingerprint> {
