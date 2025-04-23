@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.4.0] [2025-04-23]
+
 - Add `key_expressions` module that can parse key expressions (BIP380)
   - Note we only support key expressions that contain an xpub (no private keys or bare compressed or uncompressed public keys)
 - Create descriptor from key expression
