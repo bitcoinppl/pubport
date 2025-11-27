@@ -124,4 +124,85 @@ mod tests {
         let single_sig = serde_json::from_str::<SingleSig>(json);
         assert!(single_sig.is_ok());
     }
+
+    /// Test Passport wallet export JSON format (Foundation Devices)
+    ///
+    /// This JSON format is used by Passport hardware wallet when exporting
+    /// wallet data via ur:bytes QR codes.
+    ///
+    /// Uses the "abandon" seed test vector:
+    /// - BIP39: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+    /// - Master fingerprint: 73c5da0a
+    /// - BIP84 first address: bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu
+    #[test]
+    fn test_deserialize_passport_format() {
+        let passport_json = r#"{
+  "xfp": "73c5da0a",
+  "bip84": {
+    "deriv": "m/84'/0'/0'",
+    "xpub": "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs",
+    "first": "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
+  }
+}"#;
+
+        let generic = serde_json::from_str::<GenericJson>(passport_json);
+        assert!(generic.is_ok(), "Failed to parse Passport JSON: {:?}", generic.err());
+
+        let generic = generic.unwrap();
+
+        // verify master fingerprint
+        assert_eq!(generic.xfp, Some("73c5da0a".to_string()));
+
+        // verify bip84 data
+        let bip84 = generic.bip84.expect("Should have bip84 data");
+        assert_eq!(bip84.deriv, Some("m/84'/0'/0'".to_string()));
+        assert!(bip84.xpub.as_ref().unwrap().starts_with("zpub"));
+        assert_eq!(
+            bip84.first,
+            Some("bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu".to_string())
+        );
+    }
+
+    /// Test Passport export with multiple BIP paths
+    #[test]
+    fn test_deserialize_passport_full_export() {
+        let passport_json = r#"{
+  "chain": "BTC",
+  "xfp": "73c5da0a",
+  "account": 0,
+  "bip44": {
+    "deriv": "m/44'/0'/0'",
+    "xpub": "xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj",
+    "first": "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA"
+  },
+  "bip49": {
+    "deriv": "m/49'/0'/0'",
+    "xpub": "ypub6Ww3ibxVfGzLtJR4F9SRBicspAfvmvw54yern9Q6qZWFC9T6FYA34K57La5Sgs8pXuyvpDfEHX5KNZRiZRukUWaVPyL4NxA69sEAqdoV8ve",
+    "first": "37VucYSaXLCAsxYyAPfbSi9eh4iEcbShgf"
+  },
+  "bip84": {
+    "deriv": "m/84'/0'/0'",
+    "xpub": "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs",
+    "first": "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
+  }
+}"#;
+
+        let generic = serde_json::from_str::<GenericJson>(passport_json);
+        assert!(generic.is_ok(), "Failed to parse full Passport export: {:?}", generic.err());
+
+        let generic = generic.unwrap();
+
+        // verify chain
+        assert_eq!(generic.chain, Some("BTC".to_string()));
+
+        // verify all three BIP paths are present
+        assert!(generic.bip44.is_some(), "Should have bip44");
+        assert!(generic.bip49.is_some(), "Should have bip49");
+        assert!(generic.bip84.is_some(), "Should have bip84");
+
+        // verify xpub prefixes match expected formats
+        assert!(generic.bip44.as_ref().unwrap().xpub.as_ref().unwrap().starts_with("xpub"));
+        assert!(generic.bip49.as_ref().unwrap().xpub.as_ref().unwrap().starts_with("ypub"));
+        assert!(generic.bip84.as_ref().unwrap().xpub.as_ref().unwrap().starts_with("zpub"));
+    }
 }
