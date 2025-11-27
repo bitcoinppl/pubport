@@ -170,7 +170,54 @@ mod tests {
         );
     }
 
-    /// Test Passport export with multiple BIP paths
+    /// Test GenericJson with only bip84 (single path)
+    #[test]
+    fn test_deserialize_generic_single_path() {
+        let json = r#"{
+  "xfp": "73c5da0a",
+  "bip84": {
+    "deriv": "m/84'/0'/0'",
+    "xpub": "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs",
+    "first": "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
+  }
+}"#;
+
+        let generic = serde_json::from_str::<GenericJson>(json).unwrap();
+
+        assert_eq!(generic.xfp, Some("73c5da0a".to_string()));
+        assert!(generic.bip84.is_some());
+        assert!(generic.bip44.is_none());
+        assert!(generic.bip49.is_none());
+        assert!(generic.bip86.is_none());
+    }
+
+    /// Test GenericJson with bip84 and bip86 (taproot)
+    #[test]
+    fn test_deserialize_generic_with_taproot() {
+        let json = r#"{
+  "xfp": "73c5da0a",
+  "bip84": {
+    "deriv": "m/84'/0'/0'",
+    "xpub": "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs",
+    "first": "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
+  },
+  "bip86": {
+    "deriv": "m/86'/0'/0'",
+    "xpub": "xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ",
+    "first": "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"
+  }
+}"#;
+
+        let generic = serde_json::from_str::<GenericJson>(json).unwrap();
+
+        assert_eq!(generic.xfp, Some("73c5da0a".to_string()));
+        assert!(generic.bip84.is_some());
+        assert!(generic.bip86.is_some());
+        assert!(generic.bip44.is_none());
+        assert!(generic.bip49.is_none());
+    }
+
+    /// Test Passport export with multiple BIP paths including taproot
     #[test]
     fn test_deserialize_passport_full_export() {
         let passport_json = r#"{
@@ -191,25 +238,74 @@ mod tests {
     "deriv": "m/84'/0'/0'",
     "xpub": "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs",
     "first": "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
+  },
+  "bip86": {
+    "deriv": "m/86'/0'/0'",
+    "xpub": "xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ",
+    "first": "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"
   }
 }"#;
 
         let generic = serde_json::from_str::<GenericJson>(passport_json);
-        assert!(generic.is_ok(), "Failed to parse full Passport export: {:?}", generic.err());
+        assert!(
+            generic.is_ok(),
+            "Failed to parse full Passport export: {:?}",
+            generic.err()
+        );
 
         let generic = generic.unwrap();
 
         // verify chain
         assert_eq!(generic.chain, Some("BTC".to_string()));
 
-        // verify all three BIP paths are present
+        // verify all four BIP paths are present
         assert!(generic.bip44.is_some(), "Should have bip44");
         assert!(generic.bip49.is_some(), "Should have bip49");
         assert!(generic.bip84.is_some(), "Should have bip84");
+        assert!(generic.bip86.is_some(), "Should have bip86");
 
         // verify xpub prefixes match expected formats
-        assert!(generic.bip44.as_ref().unwrap().xpub.as_ref().unwrap().starts_with("xpub"));
-        assert!(generic.bip49.as_ref().unwrap().xpub.as_ref().unwrap().starts_with("ypub"));
-        assert!(generic.bip84.as_ref().unwrap().xpub.as_ref().unwrap().starts_with("zpub"));
+        assert!(generic
+            .bip44
+            .as_ref()
+            .unwrap()
+            .xpub
+            .as_ref()
+            .unwrap()
+            .starts_with("xpub"));
+        assert!(generic
+            .bip49
+            .as_ref()
+            .unwrap()
+            .xpub
+            .as_ref()
+            .unwrap()
+            .starts_with("ypub"));
+        assert!(generic
+            .bip84
+            .as_ref()
+            .unwrap()
+            .xpub
+            .as_ref()
+            .unwrap()
+            .starts_with("zpub"));
+        assert!(generic
+            .bip86
+            .as_ref()
+            .unwrap()
+            .xpub
+            .as_ref()
+            .unwrap()
+            .starts_with("xpub"));
+
+        // verify taproot address format (bc1p prefix)
+        assert!(generic
+            .bip86
+            .as_ref()
+            .unwrap()
+            .first
+            .as_ref()
+            .unwrap()
+            .starts_with("bc1p"));
     }
 }
