@@ -1,7 +1,7 @@
 use bitcoin::bip32::DerivationPath;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "kebab-case")]
 pub enum ScriptType {
     /// BIP44 [44h/0h/0h]
@@ -12,6 +12,9 @@ pub enum ScriptType {
 
     /// BIP84 [84h/0h/0h]
     P2wpkh,
+
+    /// BIP86 [86h/0h/0h]
+    P2tr,
 }
 
 const HARDENED_FLAG: u32 = 1 << 31;
@@ -19,6 +22,7 @@ const HARDENED_FLAG: u32 = 1 << 31;
 const HARDENED_44: u32 = 44 ^ HARDENED_FLAG;
 const HARDENED_49: u32 = 49 ^ HARDENED_FLAG;
 const HARDENED_84: u32 = 84 ^ HARDENED_FLAG;
+const HARDENED_86: u32 = 86 ^ HARDENED_FLAG;
 
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
@@ -41,9 +45,11 @@ impl ScriptType {
             [HARDENED_44, _, _] => hardened_or_error(&path[1..], ScriptType::P2pkh),
             [HARDENED_49, _, _] => hardened_or_error(&path[1..], ScriptType::P2shP2wpkh),
             [HARDENED_84, _, _] => hardened_or_error(&path[1..], ScriptType::P2wpkh),
+            [HARDENED_86, _, _] => hardened_or_error(&path[1..], ScriptType::P2tr),
             [44, _, _] => Err(Error::NotHardened),
             [49, _, _] => Err(Error::NotHardened),
             [84, _, _] => Err(Error::NotHardened),
+            [86, _, _] => Err(Error::NotHardened),
             _ => Err(Error::InvalidPath(path.to_vec())),
         }
     }
@@ -53,6 +59,7 @@ impl ScriptType {
             ScriptType::P2pkh => "44'/0'/0'",
             ScriptType::P2shP2wpkh => "49'/0'/0'",
             ScriptType::P2wpkh => "84'/0'/0'",
+            ScriptType::P2tr => "86'/0'/0'",
         }
     }
 
@@ -61,6 +68,7 @@ impl ScriptType {
             ScriptType::P2pkh => format!("pkh({})", script),
             ScriptType::P2shP2wpkh => format!("sh(wpkh({}))", script),
             ScriptType::P2wpkh => format!("wpkh({})", script),
+            ScriptType::P2tr => format!("tr({})", script),
         }
     }
 }

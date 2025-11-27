@@ -154,4 +154,37 @@ mod tests {
 
         assert_eq!(xpub.xpub.to_string().as_str(), xpub_str);
     }
+
+    #[test]
+    fn test_zpub_to_xpub_direct() {
+        // same test vector as test_zpub_to_xpub above
+        let zpub = "zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1";
+        let expected = "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM";
+
+        let result = zpub_to_xpub(zpub).expect("should convert zpub to xpub");
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_ypub_to_xpub_direct() {
+        let ypub = "ypub6X2aUb9NXbQM65mQy6oFECSB1CdSanwXHGTUcw7vt2LaAteuYtLoDQ6ao1fXDsenrZjgJKJyHvLypBBeo59cSKUivvwW8S6k7PVvQkVosxZ";
+        let expected = "xpub6CCKAvUTNursEnaJ8k1d27LfqEUzeAx2N9wFqYE3W1xh7nqgJEBEbLSSmohwDxzsSvcsYqiQqFzRvta65Njbe5o84bF5YXHFqfSH2Dkhonm";
+
+        let result = ypub_to_xpub(ypub).expect("should convert ypub to xpub");
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_zpub_to_xpub_invalid() {
+        let invalid = "zpubINVALID";
+        let result = zpub_to_xpub(invalid);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_ypub_to_xpub_invalid() {
+        let invalid = "ypubINVALID";
+        let result = ypub_to_xpub(invalid);
+        assert!(result.is_err());
+    }
 }
