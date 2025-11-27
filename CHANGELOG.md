@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## [0.4.1] [2025-11-27]
+
+### Fixed
+
+- P2shP2wpkh (BIP49) derivation path was incorrectly `49'/0'` instead of `49'/0'/0'`
+
 ## [0.4.0] [2025-04-23]
 
 - Add `key_expressions` module that can parse key expressions (BIP380)
