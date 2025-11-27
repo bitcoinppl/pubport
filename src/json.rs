@@ -17,6 +17,7 @@ pub struct GenericJson {
     pub bip44: Option<SingleSig>,
     pub bip49: Option<SingleSig>,
     pub bip84: Option<SingleSig>,
+    pub bip86: Option<SingleSig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,11 +77,13 @@ impl Json {
         let bip44 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2pkh)?;
         let bip49 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2shP2wpkh)?;
         let bip84 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2wpkh)?;
+        let bip86 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2tr)?;
 
         Ok(Self {
             bip44: Some(bip44),
             bip49: Some(bip49),
             bip84: Some(bip84),
+            bip86: Some(bip86),
         })
     }
 }
@@ -146,7 +149,11 @@ mod tests {
 }"#;
 
         let generic = serde_json::from_str::<GenericJson>(passport_json);
-        assert!(generic.is_ok(), "Failed to parse Passport JSON: {:?}", generic.err());
+        assert!(
+            generic.is_ok(),
+            "Failed to parse Passport JSON: {:?}",
+            generic.err()
+        );
 
         let generic = generic.unwrap();
 

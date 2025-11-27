@@ -120,7 +120,16 @@ impl Descriptors {
         }
 
         let script_type = single_sig.name.ok_or(Error::MissingScriptType)?;
-        let xpub = single_sig.xpub.ok_or(Error::MissingXpub)?;
+        let xpub_str = single_sig.xpub.ok_or(Error::MissingXpub)?;
+
+        // convert SLIP-132 encoded keys (zpub, ypub) to standard xpub format
+        let xpub = if xpub_str.starts_with("zpub") {
+            xpub::zpub_to_xpub(&xpub_str)?
+        } else if xpub_str.starts_with("ypub") {
+            xpub::ypub_to_xpub(&xpub_str)?
+        } else {
+            xpub_str
+        };
 
         let fingerprint = fingerprint
             .ok_or(Error::MissingFingerprint)?

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    descriptor::{self, Descriptors},
+    descriptor::{self, Descriptors, ScriptType},
     json::{self, GenericJson},
     key_expression::KeyExpression,
     xpub,
@@ -11,7 +11,7 @@ use crate::{
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub enum Format {
     Descriptor(Descriptors),
-    Json(Json),
+    Json(Box<Json>),
     Wasabi(Descriptors),
     Electrum(Descriptors),
     KeyExpression(Descriptors),
@@ -41,32 +41,54 @@ pub struct Json {
     pub bip44: Option<Descriptors>,
     pub bip49: Option<Descriptors>,
     pub bip84: Option<Descriptors>,
+    pub bip86: Option<Descriptors>,
 }
 
 impl TryFrom<GenericJson> for Json {
     type Error = Error;
 
     fn try_from(json: GenericJson) -> Result<Self, Self::Error> {
-        if json.bip44.is_none() && json.bip49.is_none() && json.bip84.is_none() {
+        if json.bip44.is_none()
+            && json.bip49.is_none()
+            && json.bip84.is_none()
+            && json.bip86.is_none()
+        {
             return Err(Error::JsonNoDecriptor);
         }
 
         let bip44 = json
             .bip44
-            .map(|single_sig| Descriptors::try_from_single_sig(single_sig, json.xfp.as_deref()))
+            .map(|mut single_sig| {
+                single_sig.name.get_or_insert(ScriptType::P2pkh);
+                Descriptors::try_from_single_sig(single_sig, json.xfp.as_deref())
+            })
             .transpose()?;
 
         let bip49 = json
             .bip49
-            .map(|single_sig| Descriptors::try_from_single_sig(single_sig, json.xfp.as_deref()))
+            .map(|mut single_sig| {
+                single_sig.name.get_or_insert(ScriptType::P2shP2wpkh);
+                Descriptors::try_from_single_sig(single_sig, json.xfp.as_deref())
+            })
             .transpose()?;
 
         let bip84 = json
             .bip84
-            .map(|single_sig| Descriptors::try_from_single_sig(single_sig, json.xfp.as_deref()))
+            .map(|mut single_sig| {
+                single_sig.name.get_or_insert(ScriptType::P2wpkh);
+                Descriptors::try_from_single_sig(single_sig, json.xfp.as_deref())
+            })
             .transpose()?;
 
-        if bip44.is_none() && bip49.is_none() && bip84.is_none() {
+        let bip86 = json
+            .bip86
+            .map(|mut single_sig| {
+                single_sig.name.get_or_insert(ScriptType::P2tr);
+                Descriptors::try_from_single_sig(single_sig, json.xfp.as_deref())
+            })
+            .transpose()?;
+
+        if bip44.is_none() && bip49.is_none() && bip84.is_none() && bip86.is_none() {
             return Err(Error::JsonNoDecriptor);
         }
 
@@ -74,6 +96,7 @@ impl TryFrom<GenericJson> for Json {
             bip44,
             bip49,
             bip84,
+            bip86,
         })
     }
 }
@@ -82,7 +105,7 @@ impl Format {
     pub fn try_new_from_str(string: &str) -> Result<Self, Error> {
         if let Ok(json) = serde_json::from_str::<json::GenericJson>(string) {
             if let Ok(json) = Json::try_from(json) {
-                return Ok(Format::Json(json));
+                return Ok(Format::Json(Box::new(json)));
             }
         }
 
@@ -108,11 +131,11 @@ impl Format {
             }
 
             let json = Json::try_from_child_xpub(key_expression.xpub)?;
-            return Ok(Format::Json(json));
+            return Ok(Format::Json(Box::new(json)));
         }
 
         let json = Json::try_from_child_xpub_str(string)?;
-        Ok(Format::Json(json))
+        Ok(Format::Json(Box::new(json)))
     }
 }
 
@@ -151,5 +174,61 @@ mod tests {
         let string = std::fs::read_to_string("test/data/krux.txt").unwrap();
         let krux = KeyExpression::try_from_str(&string);
         assert!(krux.is_ok());
+    }
+
+    /// Test bip86 parsing with zpub (SLIP-132 format)
+    #[test]
+    fn test_json_format_includes_bip86_with_zpub() {
+        let json_str = r#"{
+  "xfp": "73c5da0a",
+  "bip84": {
+    "deriv": "m/84'/0'/0'",
+    "xpub": "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs",
+    "first": "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
+  },
+  "bip86": {
+    "deriv": "m/86'/0'/0'",
+    "xpub": "xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ",
+    "first": "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"
+  }
+}"#;
+
+        let format = Format::try_new_from_str(json_str).expect("Failed to parse");
+
+        match format {
+            Format::Json(json) => {
+                assert!(json.bip84.is_some(), "bip84 should be present");
+                assert!(json.bip86.is_some(), "bip86 should be present");
+            }
+            _ => panic!("Expected Format::Json"),
+        }
+    }
+
+    /// Test bip86 parsing with standard xpub format
+    #[test]
+    fn test_json_format_includes_bip86_with_xpub() {
+        let json_str = r#"{
+  "xfp": "817e7be0",
+  "bip84": {
+    "deriv": "m/84'/0'/0'",
+    "xpub": "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM",
+    "first": "bc1q0g0vn4yqyk0zjwxw0zv5pltyyczty004zc9g7r"
+  },
+  "bip86": {
+    "deriv": "m/86'/0'/0'",
+    "xpub": "xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ",
+    "first": "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"
+  }
+}"#;
+
+        let format = Format::try_new_from_str(json_str).expect("Failed to parse");
+
+        match format {
+            Format::Json(json) => {
+                assert!(json.bip84.is_some(), "bip84 should be present");
+                assert!(json.bip86.is_some(), "bip86 should be present");
+            }
+            _ => panic!("Expected Format::Json"),
+        }
     }
 }
