@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## [0.5.0] [2025-11-27]
+
+### Added
+
+- BIP86 (taproot) support in `GenericJson` and `Json` formats
+- Support for Passport hardware wallet exports (and other wallets that use zpub/ypub directly in JSON)
+- Update deps
+
+### Breaking
+
+- `Format::Json` now contains `Box<Json>` instead of `Json`
+- Added `bip86` field to `Json` and `GenericJson` structs
+
 ## [0.4.1] [2025-11-27]
 
 ### Fixed
