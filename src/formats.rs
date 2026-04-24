@@ -4,6 +4,7 @@ use crate::{
     descriptor::{self, Descriptors, ScriptType},
     json::{self, GenericJson},
     key_expression::KeyExpression,
+    multisig::{self, MultisigDescriptorPair},
     xpub,
 };
 
@@ -15,6 +16,7 @@ pub enum Format {
     Wasabi(Descriptors),
     Electrum(Descriptors),
     KeyExpression(Descriptors),
+    MultisigDescriptor(MultisigDescriptorPair),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -33,6 +35,9 @@ pub enum Error {
 
     #[error("Invalid xpub: {0}")]
     InvalidXpub(#[from] xpub::Error),
+
+    #[error("Invalid multisig descriptor: {0}")]
+    InvalidMultisigDescriptor(#[from] multisig::Error),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -119,6 +124,11 @@ impl Format {
             if let Ok(desc) = Descriptors::try_from(json) {
                 return Ok(Format::Electrum(desc));
             }
+        }
+
+        if MultisigDescriptorPair::is_multisig_like(string) {
+            let pair = MultisigDescriptorPair::try_from_str(string)?;
+            return Ok(Format::MultisigDescriptor(pair));
         }
 
         if let Ok(desc) = Descriptors::try_from(string) {
