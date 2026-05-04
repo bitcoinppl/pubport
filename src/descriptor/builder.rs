@@ -6,6 +6,34 @@ use miniscript::{
 
 use super::{split_multipath_descriptor, Descriptors, Error, ScriptType};
 
+/// Builds external and internal single-sig descriptors from an account xpub
+///
+/// Use this when you already have an account-level xpub plus the master
+/// fingerprint and origin account path. The built descriptors use the standard
+/// external `/0/*` and internal `/1/*` branches for the selected script type
+///
+/// # Examples
+///
+/// ```rust
+/// use std::str::FromStr as _;
+///
+/// use bitcoin::bip32::{Fingerprint, Xpub};
+/// use pubport::descriptor::{DescriptorBuilder, ScriptType};
+///
+/// let xpub = Xpub::from_str(
+///     "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM",
+/// )?;
+/// let fingerprint = Fingerprint::from_str("817e7be0")?;
+///
+/// let descriptors =
+///     DescriptorBuilder::account_xpub_for_coin_type(ScriptType::P2wpkh, xpub, fingerprint, 0)?
+///         .build()?;
+///
+/// assert!(descriptors.external.to_string().starts_with("wpkh("));
+/// assert!(descriptors.internal.to_string().contains("/1/*"));
+///
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct DescriptorBuilder {
     script_type: ScriptType,
@@ -15,6 +43,12 @@ pub struct DescriptorBuilder {
 }
 
 impl DescriptorBuilder {
+    /// Create a builder from an explicit origin account derivation path
+    ///
+    /// `origin_derivation_path` should be the account path for `xpub`, such as
+    /// `84h/0h/0h` for a mainnet BIP84 account xpub. If you only need a
+    /// standard account-zero path for a coin type, use
+    /// [`DescriptorBuilder::account_xpub_for_coin_type`]
     pub fn new(
         script_type: ScriptType,
         xpub: Xpub,
@@ -29,6 +63,12 @@ impl DescriptorBuilder {
         }
     }
 
+    /// Create a builder for a standard account-zero BIP path and coin type
+    ///
+    /// The path is derived from `script_type`: BIP44 for P2PKH, BIP49 for
+    /// P2SH-P2WPKH, BIP84 for P2WPKH, and BIP86 for P2TR. `coin_type` is the
+    /// hardened BIP44 coin type component, such as `0` for mainnet bitcoin and
+    /// `1` for testnet or signet bitcoin
     pub fn account_xpub_for_coin_type(
         script_type: ScriptType,
         xpub: Xpub,
@@ -46,6 +86,11 @@ impl DescriptorBuilder {
         ))
     }
 
+    /// Build split external and internal descriptors
+    ///
+    /// The generated descriptor key expression is a multipath account xpub
+    /// using `<0;1>/*`, then it is split into a [`Descriptors`] value with
+    /// external `/0/*` and internal `/1/*` descriptors
     pub fn build(self) -> Result<Descriptors, Error> {
         let key = DescriptorPublicKey::MultiXPub(DescriptorMultiXKey {
             origin: Some((self.fingerprint, self.origin_derivation_path)),
