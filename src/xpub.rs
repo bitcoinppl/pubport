@@ -57,7 +57,19 @@ impl std::fmt::Display for Xpub {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    derive_more::Display,
+)]
 pub enum OriginalFormat {
     Xpub,
     Ypub,
@@ -67,7 +79,9 @@ pub enum OriginalFormat {
     Vpub,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum SingleSigPurpose {
     Bip49,
     Bip84,
@@ -80,6 +94,13 @@ impl Xpub {
 
     pub fn original_format(&self) -> OriginalFormat {
         self.original_format
+    }
+
+    pub fn coin_type(&self) -> u32 {
+        match self.original_format {
+            OriginalFormat::Xpub | OriginalFormat::Ypub | OriginalFormat::Zpub => 0,
+            OriginalFormat::Tpub | OriginalFormat::Upub | OriginalFormat::Vpub => 1,
+        }
     }
 
     pub fn single_sig_purpose(&self) -> Option<SingleSigPurpose> {
@@ -126,6 +147,16 @@ pub fn to_standard_extended_public_key(xpub: &str) -> Result<String, Error> {
     let decoded = base58::decode_check(xpub)?;
     let (standard_xpub, _) = standardize_extended_public_key(decoded)?;
     Ok(standard_xpub)
+}
+
+#[deprecated(since = "0.6.0", note = "use to_standard_extended_public_key")]
+pub fn zpub_to_xpub(zpub: &str) -> Result<String, Error> {
+    to_standard_extended_public_key(zpub)
+}
+
+#[deprecated(since = "0.6.0", note = "use to_standard_extended_public_key")]
+pub fn ypub_to_xpub(ypub: &str) -> Result<String, Error> {
+    to_standard_extended_public_key(ypub)
 }
 
 pub fn xpub_to_fingerprint(xpub: &Bip32Xpub) -> Result<Fingerprint, Error> {

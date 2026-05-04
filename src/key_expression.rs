@@ -5,11 +5,17 @@ use bitcoin::bip32::{DerivationPath, Fingerprint, Xpub};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+use crate::xpub::OriginalFormat;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
 /// A parsed key expression
 pub struct KeyExpression {
     /// the public key in xpub format
     pub xpub: Xpub,
+
+    /// the extended public key format before descriptor normalization
+    #[serde(default)]
+    pub xpub_original_format: Option<OriginalFormat>,
 
     /// the master fingerprint if present in the origin
     pub master_fingerprint: Option<Fingerprint>,
@@ -89,12 +95,13 @@ impl KeyExpression {
         // check if there's a derivation path after the xpub
         let (xpub_str, derivation_path) = parser.parse_xpub_and_derivation()?;
 
-        let xpub = crate::xpub::Xpub::try_from(xpub_str)
-            .map_err(Error::XpubParseError)?
-            .into_bip32();
+        let parsed_xpub = crate::xpub::Xpub::try_from(xpub_str).map_err(Error::XpubParseError)?;
+        let xpub_original_format = Some(parsed_xpub.original_format());
+        let xpub = parsed_xpub.into_bip32();
 
         Ok(KeyExpression {
             xpub,
+            xpub_original_format,
             master_fingerprint,
             origin_derivation_path: origin_path,
             xpub_derivation_path: derivation_path,
@@ -317,6 +324,7 @@ mod tests {
                 master_fingerprint: Some(_),
                 origin_derivation_path: Some(_),
                 xpub_derivation_path: None,
+                ..
             }
         ));
     }
@@ -332,6 +340,7 @@ mod tests {
                 master_fingerprint: Some(_),
                 origin_derivation_path: Some(_),
                 xpub_derivation_path: Some(_),
+                ..
             }
         ));
     }
@@ -352,6 +361,7 @@ mod tests {
                 master_fingerprint: Some(_),
                 origin_derivation_path: Some(_),
                 xpub_derivation_path: Some(_),
+                ..
             }
         ));
 
@@ -400,6 +410,7 @@ mod tests {
                 master_fingerprint: Some(_),
                 origin_derivation_path: Some(_),
                 xpub_derivation_path: Some(_),
+                ..
             }
         ));
     }

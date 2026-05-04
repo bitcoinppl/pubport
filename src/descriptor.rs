@@ -144,11 +144,20 @@ impl Descriptors {
         xpub: bitcoin::bip32::Xpub,
         script_type: ScriptType,
     ) -> Result<Self, Error> {
+        Self::try_from_child_xpub_with_coin_type(xpub, script_type, 0)
+    }
+
+    pub fn try_from_child_xpub_with_coin_type(
+        xpub: bitcoin::bip32::Xpub,
+        script_type: ScriptType,
+        coin_type: u32,
+    ) -> Result<Self, Error> {
         if xpub.depth == 0 {
             return Err(Error::MasterXpub);
         }
 
-        let descriptor_derivation_path = script_type.descriptor_derivation_path();
+        let descriptor_derivation_path =
+            script_type.descriptor_derivation_path_for_coin_type(coin_type);
 
         // with just the child xpub we can't get the master fingerprint
         let fingerprint = "00000000";
@@ -162,6 +171,7 @@ impl Descriptors {
     pub fn try_from_key_expression(key_expression: &KeyExpression) -> Result<Self, Error> {
         if let KeyExpression {
             xpub,
+            xpub_original_format: _,
             master_fingerprint: Some(master_fingerprint),
             origin_derivation_path: Some(path),
             xpub_derivation_path: _,
