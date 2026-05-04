@@ -107,6 +107,11 @@ impl KeyExpression {
             xpub_derivation_path: derivation_path,
         })
     }
+
+    /// Return whether the key expression includes the fields needed for a descriptor
+    pub fn has_descriptor_fields(&self) -> bool {
+        self.master_fingerprint.is_some() && self.origin_derivation_path.is_some()
+    }
 }
 
 struct Parser<'a> {

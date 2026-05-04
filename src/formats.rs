@@ -130,23 +130,25 @@ impl Format {
             Err(error) => error,
         };
 
-        if let Ok(key_expression) = KeyExpression::try_from_str(string) {
-            if let Ok(desc) = Descriptors::try_from_key_expression(&key_expression) {
-                return Ok(Format::KeyExpression(desc));
-            }
+        let Ok(key_expression) = KeyExpression::try_from_str(string) else {
+            return Err(child_xpub_error);
+        };
 
-            let json = if let Some(original_format) = key_expression.xpub_original_format {
-                Json::try_from_child_xpub_with_original_format(
-                    key_expression.xpub,
-                    original_format,
-                )?
-            } else {
-                Json::try_from_child_xpub(key_expression.xpub)?
-            };
-            return Ok(Format::Json(Box::new(json)));
+        if key_expression.has_descriptor_fields() {
+            let desc = Descriptors::try_from_key_expression(&key_expression)?;
+            return Ok(Format::KeyExpression(desc));
         }
 
-        Err(child_xpub_error)
+        let json = match key_expression.xpub_original_format {
+            Some(original_format) => Json::try_from_child_xpub_with_original_format(
+                key_expression.xpub,
+                original_format,
+            )?,
+
+            None => Json::try_from_child_xpub(key_expression.xpub)?,
+        };
+
+        Ok(Format::Json(Box::new(json)))
     }
 }
 
@@ -237,6 +239,33 @@ mod tests {
         assert!(json.bip49.is_none());
         assert!(json.bip84.is_some());
         assert!(json.bip86.is_none());
+    }
+
+    #[test]
+    fn test_parse_key_expression_only_falls_back_when_incomplete() {
+        let input = format!("{BIP84_ZPUB}/0/*");
+        let format = Format::try_new_from_str(&input).unwrap();
+        let Format::Json(json) = format else {
+            panic!("Expected Format::Json");
+        };
+
+        assert!(json.bip44.is_none());
+        assert!(json.bip49.is_none());
+        assert!(json.bip84.is_some());
+        assert!(json.bip86.is_none());
+    }
+
+    #[test]
+    fn test_parse_key_expression_returns_non_incomplete_descriptor_errors() {
+        let input = format!("[deadbeef/84/0h/0h]{BIP84_ZPUB}/0/*");
+        let result = Format::try_new_from_str(&input);
+
+        assert!(matches!(
+            result,
+            Err(Error::InvalidDescriptor(
+                descriptor::Error::ScriptTypeParseError(_)
+            ))
+        ));
     }
 
     #[test]
