@@ -249,8 +249,9 @@ impl TryFrom<WasabiJson> for Descriptors {
 
     fn try_from(json: WasabiJson) -> Result<Self, Self::Error> {
         let fingerprint = json.master_fingerprint.to_ascii_lowercase();
-        let derivation_path = "84h/0h/0h";
         let xpub = xpub::Xpub::try_from(json.ext_pub_key.as_str())?;
+        let derivation_path =
+            ScriptType::P2wpkh.descriptor_derivation_path_for_coin_type(xpub.coin_type());
 
         let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
         let desc = ScriptType::P2wpkh.wrap_with(&script);
@@ -482,6 +483,28 @@ mod tests {
 
         assert_eq!(desc.external, known_desc().external);
         assert_eq!(desc.internal, known_desc().internal);
+    }
+
+    #[test]
+    fn test_parse_wasabi_with_testnet_slip132_key() {
+        let mut decoded = bitcoin::base58::decode_check(
+            "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs",
+        )
+        .unwrap();
+        decoded[0..4].copy_from_slice(&[0x04, 0x5f, 0x1c, 0xf6]);
+        let vpub = bitcoin::base58::encode_check(&decoded);
+        let json = format!(
+            r#"{{
+            "ColdCardFirmwareVersion": "5.4.0",
+            "MasterFingerprint": "817E7BE0",
+            "ExtPubKey": "{vpub}"
+        }}"#
+        );
+
+        let json = serde_json::from_str::<WasabiJson>(&json).unwrap();
+        let desc = Descriptors::try_from(json).unwrap();
+
+        assert!(desc.external.to_string().contains("/84'/1'/0']tpub"));
     }
 
     #[test]
