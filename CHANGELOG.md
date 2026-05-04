@@ -24,6 +24,8 @@
 
 - Private extended keys and uppercase multisig SLIP-132 prefixes now return
   typed unsupported-key errors instead of generic xpub parse failures
+- `ScriptType::descriptor_derivation_path` now returns `String` instead of
+  `&'static str`
 - `KeyExpression` now includes the original extended public key format so
   origin-less SLIP-132 key expressions keep their advertised script purpose
 

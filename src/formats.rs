@@ -125,9 +125,10 @@ impl Format {
             return Ok(Format::Descriptor(desc));
         }
 
-        if let Ok(json) = Json::try_from_child_xpub_str(string) {
-            return Ok(Format::Json(Box::new(json)));
-        }
+        let child_xpub_error = match Json::try_from_child_xpub_str(string) {
+            Ok(json) => return Ok(Format::Json(Box::new(json))),
+            Err(error) => error,
+        };
 
         if let Ok(key_expression) = KeyExpression::try_from_str(string) {
             if let Ok(desc) = Descriptors::try_from_key_expression(&key_expression) {
@@ -145,8 +146,7 @@ impl Format {
             return Ok(Format::Json(Box::new(json)));
         }
 
-        let json = Json::try_from_child_xpub_str(string)?;
-        Ok(Format::Json(Box::new(json)))
+        Err(child_xpub_error)
     }
 }
 
