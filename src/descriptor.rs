@@ -171,10 +171,9 @@ impl Descriptors {
     pub fn try_from_key_expression(key_expression: &KeyExpression) -> Result<Self, Error> {
         if let KeyExpression {
             xpub,
-            xpub_original_format: _,
             master_fingerprint: Some(master_fingerprint),
             origin_derivation_path: Some(path),
-            xpub_derivation_path: _,
+            ..
         } = key_expression
         {
             let script_type = ScriptType::try_from_derivation_path(path)?;
