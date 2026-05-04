@@ -125,6 +125,10 @@ impl Format {
             return Ok(Format::Descriptor(desc));
         }
 
+        if let Ok(json) = Json::try_from_child_xpub_str(string) {
+            return Ok(Format::Json(Box::new(json)));
+        }
+
         if let Ok(key_expression) = KeyExpression::try_from_str(string) {
             if let Ok(desc) = Descriptors::try_from_key_expression(&key_expression) {
                 return Ok(Format::KeyExpression(desc));
@@ -142,6 +146,12 @@ impl Format {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitcoin::base58;
+
+    const BIP49_YPUB: &str = "ypub6Ww3ibxVfGzLrAH1PNcjyAWenMTbbAosGNB6VvmSEgytSER9azLDWCxoJwW7Ke7icmizBMXrzBx9979FfaHxHcrArf3zbeJJJUZPf663zsP";
+    const BIP84_ZPUB: &str = "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs";
+    const UPUB_VERSION: [u8; 4] = [0x04, 0x4a, 0x52, 0x62];
+    const VPUB_VERSION: [u8; 4] = [0x04, 0x5f, 0x1c, 0xf6];
 
     #[test]
     fn test_parse_all_formats() {
@@ -167,6 +177,117 @@ mod tests {
         let xpub = "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM";
         let format = Format::try_new_from_str(xpub);
         assert!(format.is_ok());
+    }
+
+    #[test]
+    fn test_parse_bare_ypub_only_returns_bip49() {
+        let format = Format::try_new_from_str(BIP49_YPUB).unwrap();
+        let Format::Json(json) = format else {
+            panic!("Expected Format::Json");
+        };
+
+        assert!(json.bip44.is_none());
+        assert!(json.bip49.is_some());
+        assert!(json.bip84.is_none());
+        assert!(json.bip86.is_none());
+        assert!(json
+            .bip49
+            .unwrap()
+            .external
+            .to_string()
+            .starts_with("sh(wpkh("));
+    }
+
+    #[test]
+    fn test_parse_bare_zpub_only_returns_bip84() {
+        let format = Format::try_new_from_str(BIP84_ZPUB).unwrap();
+        let Format::Json(json) = format else {
+            panic!("Expected Format::Json");
+        };
+
+        assert!(json.bip44.is_none());
+        assert!(json.bip49.is_none());
+        assert!(json.bip84.is_some());
+        assert!(json.bip86.is_none());
+        assert!(json
+            .bip84
+            .unwrap()
+            .external
+            .to_string()
+            .starts_with("wpkh("));
+    }
+
+    #[test]
+    fn test_parse_generic_json_with_testnet_slip132_keys() {
+        let upub = key_with_version(BIP49_YPUB, UPUB_VERSION);
+        let vpub = key_with_version(BIP84_ZPUB, VPUB_VERSION);
+        let json_str = format!(
+            r#"{{
+  "xfp": "73c5da0a",
+  "bip49": {{
+    "deriv": "m/49'/1'/0'",
+    "xpub": "{upub}"
+  }},
+  "bip84": {{
+    "deriv": "m/84'/1'/0'",
+    "xpub": "{vpub}"
+  }}
+}}"#
+        );
+
+        let format = Format::try_new_from_str(&json_str).unwrap();
+        let Format::Json(json) = format else {
+            panic!("Expected Format::Json");
+        };
+
+        let bip49 = json.bip49.expect("bip49 should be present");
+        let bip84 = json.bip84.expect("bip84 should be present");
+
+        assert!(bip49.external.to_string().contains("tpub"));
+        assert!(bip49.external.to_string().starts_with("sh(wpkh("));
+        assert!(bip84.external.to_string().contains("tpub"));
+        assert!(bip84.external.to_string().starts_with("wpkh("));
+        assert!(json.bip44.is_none());
+        assert!(json.bip86.is_none());
+    }
+
+    #[test]
+    fn test_parse_electrum_with_testnet_slip132_keys() {
+        for (derivation, key, expected_start) in [
+            (
+                "m/49h/1h/0h",
+                key_with_version(BIP49_YPUB, UPUB_VERSION),
+                "sh(wpkh(",
+            ),
+            (
+                "m/84h/1h/0h",
+                key_with_version(BIP84_ZPUB, VPUB_VERSION),
+                "wpkh(",
+            ),
+        ] {
+            let json_str = format!(
+                r#"{{
+  "seed_version": 17,
+  "use_encryption": false,
+  "wallet_type": "standard",
+  "keystore": {{
+    "type": "hardware",
+    "hw_type": "coldcard",
+    "label": "Testnet Import",
+    "derivation": "{derivation}",
+    "xpub": "{key}"
+  }}
+}}"#
+            );
+
+            let format = Format::try_new_from_str(&json_str).unwrap();
+            let Format::Electrum(desc) = format else {
+                panic!("Expected Format::Electrum");
+            };
+
+            assert!(desc.external.to_string().starts_with(expected_start));
+            assert!(desc.external.to_string().contains("tpub"));
+        }
     }
 
     #[test]
@@ -230,5 +351,11 @@ mod tests {
             }
             _ => panic!("Expected Format::Json"),
         }
+    }
+
+    fn key_with_version(key: &str, version: [u8; 4]) -> String {
+        let mut decoded = base58::decode_check(key).expect("valid test vector");
+        decoded[0..4].copy_from_slice(&version);
+        base58::encode_check(&decoded)
     }
 }

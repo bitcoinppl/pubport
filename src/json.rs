@@ -1,8 +1,7 @@
-use std::str::FromStr as _;
-
 use crate::{
     descriptor::{Descriptors, ScriptType},
     formats::Json,
+    xpub::{self, SingleSigPurpose},
 };
 use serde::{Deserialize, Serialize};
 
@@ -67,10 +66,9 @@ pub struct SingleSig {
 
 impl Json {
     pub fn try_from_child_xpub_str(string: &str) -> Result<Self, crate::Error> {
-        let xpub =
-            bitcoin::bip32::Xpub::from_str(string).map_err(crate::xpub::Error::InvalidXpub)?;
+        let xpub = xpub::Xpub::try_from(string)?;
 
-        Self::try_from_child_xpub(xpub)
+        Self::try_from_parsed_child_xpub(xpub)
     }
 
     pub fn try_from_child_xpub(xpub: bitcoin::bip32::Xpub) -> Result<Self, crate::Error> {
@@ -85,6 +83,30 @@ impl Json {
             bip84: Some(bip84),
             bip86: Some(bip86),
         })
+    }
+
+    fn try_from_parsed_child_xpub(xpub: xpub::Xpub) -> Result<Self, crate::Error> {
+        let single_sig_purpose = xpub.single_sig_purpose();
+        let xpub = xpub.into_bip32();
+
+        match single_sig_purpose {
+            Some(SingleSigPurpose::Bip49) => Ok(Self {
+                bip44: None,
+                bip49: Some(Descriptors::try_from_child_xpub(
+                    xpub,
+                    ScriptType::P2shP2wpkh,
+                )?),
+                bip84: None,
+                bip86: None,
+            }),
+            Some(SingleSigPurpose::Bip84) => Ok(Self {
+                bip44: None,
+                bip49: None,
+                bip84: Some(Descriptors::try_from_child_xpub(xpub, ScriptType::P2wpkh)?),
+                bip86: None,
+            }),
+            None => Self::try_from_child_xpub(xpub),
+        }
     }
 }
 

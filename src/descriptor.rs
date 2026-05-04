@@ -122,14 +122,7 @@ impl Descriptors {
         let script_type = single_sig.name.ok_or(Error::MissingScriptType)?;
         let xpub_str = single_sig.xpub.ok_or(Error::MissingXpub)?;
 
-        // convert SLIP-132 encoded keys (zpub, ypub) to standard xpub format
-        let xpub = if xpub_str.starts_with("zpub") {
-            xpub::zpub_to_xpub(&xpub_str)?
-        } else if xpub_str.starts_with("ypub") {
-            xpub::ypub_to_xpub(&xpub_str)?
-        } else {
-            xpub_str
-        };
+        let xpub = xpub::Xpub::try_from(xpub_str.as_str())?;
 
         let fingerprint = fingerprint
             .ok_or(Error::MissingFingerprint)?
@@ -247,7 +240,7 @@ impl TryFrom<WasabiJson> for Descriptors {
     fn try_from(json: WasabiJson) -> Result<Self, Self::Error> {
         let fingerprint = json.master_fingerprint.to_ascii_lowercase();
         let derivation_path = "84h/0h/0h";
-        let xpub = json.ext_pub_key;
+        let xpub = xpub::Xpub::try_from(json.ext_pub_key.as_str())?;
 
         let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
         let desc = ScriptType::P2wpkh.wrap_with(&script);

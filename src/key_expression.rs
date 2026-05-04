@@ -59,7 +59,7 @@ pub enum Error {
     KeyOriginWithNoPublicKey(String),
 
     #[error("Failed to parse Xpub: {0}")]
-    XpubParseError(#[from] bitcoin::bip32::Error),
+    XpubParseError(#[from] crate::xpub::Error),
 
     #[error("Failed to parse derivation path: {0}")]
     DerivationPathParseError(bitcoin::bip32::Error),
@@ -89,7 +89,9 @@ impl KeyExpression {
         // check if there's a derivation path after the xpub
         let (xpub_str, derivation_path) = parser.parse_xpub_and_derivation()?;
 
-        let xpub = Xpub::from_str(xpub_str).map_err(Error::XpubParseError)?;
+        let xpub = crate::xpub::Xpub::try_from(xpub_str)
+            .map_err(Error::XpubParseError)?
+            .into_bip32();
 
         Ok(KeyExpression {
             xpub,
@@ -280,6 +282,28 @@ mod tests {
         let input = "xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL";
         let result = KeyExpression::try_from_str(input).unwrap();
         assert!(matches!(result, KeyExpression { xpub: _, .. }));
+    }
+
+    #[test]
+    fn test_key_expression_with_ypub() {
+        let input = "[73c5da0a/49h/0h/0h]ypub6Ww3ibxVfGzLrAH1PNcjyAWenMTbbAosGNB6VvmSEgytSER9azLDWCxoJwW7Ke7icmizBMXrzBx9979FfaHxHcrArf3zbeJJJUZPf663zsP";
+        let result = KeyExpression::try_from_str(input).unwrap();
+
+        assert_eq!(
+            result.xpub.to_string(),
+            "xpub6C6nQwHaWbSrzs5tZ1q7m5R9cPK9eYpNMFesiXsYrgc1P8bvLLAet9JfHjYXKjToD8cBRswJXXbbFpXgwsswVPAZzKMa1jUp2kVkGVUaJa7"
+        );
+    }
+
+    #[test]
+    fn test_key_expression_with_zpub() {
+        let input = "[73c5da0a/84h/0h/0h]zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs";
+        let result = KeyExpression::try_from_str(input).unwrap();
+
+        assert_eq!(
+            result.xpub.to_string(),
+            "xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V"
+        );
     }
 
     #[test]
