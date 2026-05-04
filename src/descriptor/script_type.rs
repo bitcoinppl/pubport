@@ -39,8 +39,10 @@ pub enum Error {
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl ScriptType {
-    /// Try to parse a derivation path into a ScriptType
-    /// Will only work for hardened paths
+    /// Try to infer the script type from an account derivation path
+    ///
+    /// Only BIP44, BIP49, BIP84, and BIP86 account paths with hardened
+    /// purpose, coin type, and account components are supported
     pub fn try_from_derivation_path(path: &DerivationPath) -> Result<Self> {
         let path = path.to_u32_vec();
 
@@ -57,6 +59,7 @@ impl ScriptType {
         }
     }
 
+    /// Return the BIP purpose number for this script type
     pub fn purpose(&self) -> u32 {
         match self {
             ScriptType::P2pkh => 44,
@@ -66,6 +69,7 @@ impl ScriptType {
         }
     }
 
+    /// Build the account derivation path for a coin type
     pub fn account_derivation_path_for_coin_type(&self, coin_type: u32) -> Result<DerivationPath> {
         let path = vec![
             hardened_child_number(self.purpose())?,
