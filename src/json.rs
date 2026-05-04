@@ -1,8 +1,7 @@
-use std::str::FromStr as _;
-
 use crate::{
     descriptor::{Descriptors, ScriptType},
     formats::Json,
+    xpub::{self, OriginalFormat, SingleSigPurpose},
 };
 use serde::{Deserialize, Serialize};
 
@@ -67,17 +66,30 @@ pub struct SingleSig {
 
 impl Json {
     pub fn try_from_child_xpub_str(string: &str) -> Result<Self, crate::Error> {
-        let xpub =
-            bitcoin::bip32::Xpub::from_str(string).map_err(crate::xpub::Error::InvalidXpub)?;
+        let xpub = xpub::Xpub::try_from(string)?;
 
-        Self::try_from_child_xpub(xpub)
+        Self::try_from_parsed_child_xpub(xpub)
     }
 
     pub fn try_from_child_xpub(xpub: bitcoin::bip32::Xpub) -> Result<Self, crate::Error> {
-        let bip44 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2pkh)?;
-        let bip49 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2shP2wpkh)?;
-        let bip84 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2wpkh)?;
-        let bip86 = Descriptors::try_from_child_xpub(xpub, ScriptType::P2tr)?;
+        Self::try_from_child_xpub_with_coin_type(xpub, 0)
+    }
+
+    fn try_from_child_xpub_with_coin_type(
+        xpub: bitcoin::bip32::Xpub,
+        coin_type: u32,
+    ) -> Result<Self, crate::Error> {
+        let bip44 =
+            Descriptors::try_from_child_xpub_with_coin_type(xpub, ScriptType::P2pkh, coin_type)?;
+        let bip49 = Descriptors::try_from_child_xpub_with_coin_type(
+            xpub,
+            ScriptType::P2shP2wpkh,
+            coin_type,
+        )?;
+        let bip84 =
+            Descriptors::try_from_child_xpub_with_coin_type(xpub, ScriptType::P2wpkh, coin_type)?;
+        let bip86 =
+            Descriptors::try_from_child_xpub_with_coin_type(xpub, ScriptType::P2tr, coin_type)?;
 
         Ok(Self {
             bip44: Some(bip44),
@@ -85,6 +97,61 @@ impl Json {
             bip84: Some(bip84),
             bip86: Some(bip86),
         })
+    }
+
+    fn try_from_parsed_child_xpub(xpub: xpub::Xpub) -> Result<Self, crate::Error> {
+        let single_sig_purpose = xpub.single_sig_purpose();
+        let coin_type = xpub.coin_type();
+        let xpub = xpub.into_bip32();
+
+        Self::try_from_child_xpub_with_purpose(xpub, single_sig_purpose, coin_type)
+    }
+
+    pub fn try_from_child_xpub_with_original_format(
+        xpub: bitcoin::bip32::Xpub,
+        original_format: OriginalFormat,
+    ) -> Result<Self, crate::Error> {
+        let single_sig_purpose = match original_format {
+            OriginalFormat::Ypub | OriginalFormat::Upub => Some(SingleSigPurpose::Bip49),
+            OriginalFormat::Zpub | OriginalFormat::Vpub => Some(SingleSigPurpose::Bip84),
+            OriginalFormat::Xpub | OriginalFormat::Tpub => None,
+        };
+        let coin_type = match original_format {
+            OriginalFormat::Xpub | OriginalFormat::Ypub | OriginalFormat::Zpub => 0,
+            OriginalFormat::Tpub | OriginalFormat::Upub | OriginalFormat::Vpub => 1,
+        };
+
+        Self::try_from_child_xpub_with_purpose(xpub, single_sig_purpose, coin_type)
+    }
+
+    fn try_from_child_xpub_with_purpose(
+        xpub: bitcoin::bip32::Xpub,
+        single_sig_purpose: Option<SingleSigPurpose>,
+        coin_type: u32,
+    ) -> Result<Self, crate::Error> {
+        match single_sig_purpose {
+            Some(SingleSigPurpose::Bip49) => Ok(Self {
+                bip44: None,
+                bip49: Some(Descriptors::try_from_child_xpub_with_coin_type(
+                    xpub,
+                    ScriptType::P2shP2wpkh,
+                    coin_type,
+                )?),
+                bip84: None,
+                bip86: None,
+            }),
+            Some(SingleSigPurpose::Bip84) => Ok(Self {
+                bip44: None,
+                bip49: None,
+                bip84: Some(Descriptors::try_from_child_xpub_with_coin_type(
+                    xpub,
+                    ScriptType::P2wpkh,
+                    coin_type,
+                )?),
+                bip86: None,
+            }),
+            None => Self::try_from_child_xpub_with_coin_type(xpub, coin_type),
+        }
     }
 }
 

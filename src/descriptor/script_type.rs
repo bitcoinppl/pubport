@@ -54,12 +54,16 @@ impl ScriptType {
         }
     }
 
-    pub fn descriptor_derivation_path(&self) -> &'static str {
+    pub fn descriptor_derivation_path(&self) -> String {
+        self.descriptor_derivation_path_for_coin_type(0)
+    }
+
+    pub fn descriptor_derivation_path_for_coin_type(&self, coin_type: u32) -> String {
         match self {
-            ScriptType::P2pkh => "44'/0'/0'",
-            ScriptType::P2shP2wpkh => "49'/0'/0'",
-            ScriptType::P2wpkh => "84'/0'/0'",
-            ScriptType::P2tr => "86'/0'/0'",
+            ScriptType::P2pkh => format!("44'/{coin_type}'/0'"),
+            ScriptType::P2shP2wpkh => format!("49'/{coin_type}'/0'"),
+            ScriptType::P2wpkh => format!("84'/{coin_type}'/0'"),
+            ScriptType::P2tr => format!("86'/{coin_type}'/0'"),
         }
     }
 

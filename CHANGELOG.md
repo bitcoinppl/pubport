@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Added
+
+- Support Bitcoin public SLIP-132 extended keys across bare key, JSON,
+  Electrum, Wasabi, and BIP380 key-expression imports
+- Support testnet single-sig SLIP-132 prefixes `upub` and `vpub`
+
+### Changed
+
+- Bare `ypub` and `upub` imports now create only BIP49 descriptors
+- Bare `zpub` and `vpub` imports now create only BIP84 descriptors
+- SLIP-132 keys are normalized to standard `xpub` or `tpub` in descriptor
+  output
+
+### Deprecated
+
+- `xpub::zpub_to_xpub` and `xpub::ypub_to_xpub`; use
+  `xpub::to_standard_extended_public_key` instead
+
+### Breaking
+
+- Private extended keys and uppercase multisig SLIP-132 prefixes now return
+  typed unsupported-key errors instead of generic xpub parse failures
+- `ScriptType::descriptor_derivation_path` now returns `String` instead of
+  `&'static str`
+- `KeyExpression` now includes the original extended public key format so
+  origin-less SLIP-132 key expressions keep their advertised script purpose
+
 ## [0.5.0] [2025-11-27]
 
 ### Added

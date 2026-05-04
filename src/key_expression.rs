@@ -5,11 +5,17 @@ use bitcoin::bip32::{DerivationPath, Fingerprint, Xpub};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+use crate::xpub::OriginalFormat;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
 /// A parsed key expression
 pub struct KeyExpression {
     /// the public key in xpub format
     pub xpub: Xpub,
+
+    /// the extended public key format before descriptor normalization
+    #[serde(default)]
+    pub xpub_original_format: Option<OriginalFormat>,
 
     /// the master fingerprint if present in the origin
     pub master_fingerprint: Option<Fingerprint>,
@@ -59,7 +65,7 @@ pub enum Error {
     KeyOriginWithNoPublicKey(String),
 
     #[error("Failed to parse Xpub: {0}")]
-    XpubParseError(#[from] bitcoin::bip32::Error),
+    XpubParseError(#[from] crate::xpub::Error),
 
     #[error("Failed to parse derivation path: {0}")]
     DerivationPathParseError(bitcoin::bip32::Error),
@@ -89,14 +95,22 @@ impl KeyExpression {
         // check if there's a derivation path after the xpub
         let (xpub_str, derivation_path) = parser.parse_xpub_and_derivation()?;
 
-        let xpub = Xpub::from_str(xpub_str).map_err(Error::XpubParseError)?;
+        let parsed_xpub = crate::xpub::Xpub::try_from(xpub_str).map_err(Error::XpubParseError)?;
+        let xpub_original_format = Some(parsed_xpub.original_format());
+        let xpub = parsed_xpub.into_bip32();
 
         Ok(KeyExpression {
             xpub,
+            xpub_original_format,
             master_fingerprint,
             origin_derivation_path: origin_path,
             xpub_derivation_path: derivation_path,
         })
+    }
+
+    /// Return whether the key expression includes the fields needed for a descriptor
+    pub fn has_descriptor_fields(&self) -> bool {
+        self.master_fingerprint.is_some() && self.origin_derivation_path.is_some()
     }
 }
 
@@ -283,6 +297,28 @@ mod tests {
     }
 
     #[test]
+    fn test_key_expression_with_ypub() {
+        let input = "[73c5da0a/49h/0h/0h]ypub6Ww3ibxVfGzLrAH1PNcjyAWenMTbbAosGNB6VvmSEgytSER9azLDWCxoJwW7Ke7icmizBMXrzBx9979FfaHxHcrArf3zbeJJJUZPf663zsP";
+        let result = KeyExpression::try_from_str(input).unwrap();
+
+        assert_eq!(
+            result.xpub.to_string(),
+            "xpub6C6nQwHaWbSrzs5tZ1q7m5R9cPK9eYpNMFesiXsYrgc1P8bvLLAet9JfHjYXKjToD8cBRswJXXbbFpXgwsswVPAZzKMa1jUp2kVkGVUaJa7"
+        );
+    }
+
+    #[test]
+    fn test_key_expression_with_zpub() {
+        let input = "[73c5da0a/84h/0h/0h]zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs";
+        let result = KeyExpression::try_from_str(input).unwrap();
+
+        assert_eq!(
+            result.xpub.to_string(),
+            "xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V"
+        );
+    }
+
+    #[test]
     fn test_extended_public_key_with_key_origin() {
         let input = "[deadbeef/0h/1h/2h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL";
         let result = KeyExpression::try_from_str(input).unwrap();
@@ -293,6 +329,7 @@ mod tests {
                 master_fingerprint: Some(_),
                 origin_derivation_path: Some(_),
                 xpub_derivation_path: None,
+                ..
             }
         ));
     }
@@ -308,6 +345,7 @@ mod tests {
                 master_fingerprint: Some(_),
                 origin_derivation_path: Some(_),
                 xpub_derivation_path: Some(_),
+                ..
             }
         ));
     }
@@ -328,6 +366,7 @@ mod tests {
                 master_fingerprint: Some(_),
                 origin_derivation_path: Some(_),
                 xpub_derivation_path: Some(_),
+                ..
             }
         ));
 
@@ -376,6 +415,7 @@ mod tests {
                 master_fingerprint: Some(_),
                 origin_derivation_path: Some(_),
                 xpub_derivation_path: Some(_),
+                ..
             }
         ));
     }

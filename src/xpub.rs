@@ -5,22 +5,38 @@ use bitcoin::{
     bip32::{Fingerprint, Xpub as Bip32Xpub},
 };
 
+const EXTENDED_KEY_LENGTH: usize = 78;
+
+const XPUB_VERSION: [u8; 4] = [0x04, 0x88, 0xb2, 0x1e];
+const YPUB_VERSION: [u8; 4] = [0x04, 0x9d, 0x7c, 0xb2];
+const ZPUB_VERSION: [u8; 4] = [0x04, 0xb2, 0x47, 0x46];
+const TPUB_VERSION: [u8; 4] = [0x04, 0x35, 0x87, 0xcf];
+const UPUB_VERSION: [u8; 4] = [0x04, 0x4a, 0x52, 0x62];
+const VPUB_VERSION: [u8; 4] = [0x04, 0x5f, 0x1c, 0xf6];
+
+const XPRV_VERSION: [u8; 4] = [0x04, 0x88, 0xad, 0xe4];
+const YPRV_VERSION: [u8; 4] = [0x04, 0x9d, 0x78, 0x78];
+const ZPRV_VERSION: [u8; 4] = [0x04, 0xb2, 0x43, 0x0c];
+const TPRV_VERSION: [u8; 4] = [0x04, 0x35, 0x83, 0x94];
+const UPRV_VERSION: [u8; 4] = [0x04, 0x4a, 0x4e, 0x28];
+const VPRV_VERSION: [u8; 4] = [0x04, 0x5f, 0x18, 0xbc];
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Invalid xpub: {0}")]
     InvalidXpub(#[from] bitcoin::bip32::Error),
 
-    #[error("Invalid zpub: {0}")]
-    InvalidZpub(#[from] base58::Error),
+    #[error("Invalid extended public key: {0}")]
+    InvalidBase58(#[from] base58::Error),
 
-    #[error("Invalid ypub: {0}")]
-    InvalidYpubDecode(base58::Error),
+    #[error("Invalid extended public key length: {0}")]
+    InvalidExtendedKeyLength(usize),
 
-    #[error("Invalid ypub: {0}")]
-    InvalidYpubLength(usize),
+    #[error("Private extended keys are not supported: {0}")]
+    UnsupportedPrivateKey(&'static str),
 
-    #[error("Not an xpub, zpub or ypub, starts with: {0}")]
-    NotXpub(String),
+    #[error("Unsupported extended public key version: {0:02x?}")]
+    UnsupportedVersion([u8; 4]),
 
     #[error("Too short, only {0} chars long")]
     TooShort(usize),
@@ -41,14 +57,60 @@ impl std::fmt::Display for Xpub {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    derive_more::Display,
+)]
 pub enum OriginalFormat {
-    Zpub,
-    Ypub,
     Xpub,
+    Ypub,
+    Zpub,
+    Tpub,
+    Upub,
+    Vpub,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+pub enum SingleSigPurpose {
+    Bip49,
+    Bip84,
 }
 
 impl Xpub {
+    pub fn into_bip32(self) -> Bip32Xpub {
+        self.xpub
+    }
+
+    pub fn original_format(&self) -> OriginalFormat {
+        self.original_format
+    }
+
+    pub fn coin_type(&self) -> u32 {
+        match self.original_format {
+            OriginalFormat::Xpub | OriginalFormat::Ypub | OriginalFormat::Zpub => 0,
+            OriginalFormat::Tpub | OriginalFormat::Upub | OriginalFormat::Vpub => 1,
+        }
+    }
+
+    pub fn single_sig_purpose(&self) -> Option<SingleSigPurpose> {
+        match self.original_format {
+            OriginalFormat::Ypub | OriginalFormat::Upub => Some(SingleSigPurpose::Bip49),
+            OriginalFormat::Zpub | OriginalFormat::Vpub => Some(SingleSigPurpose::Bip84),
+            OriginalFormat::Xpub | OriginalFormat::Tpub => None,
+        }
+    }
+
     pub fn master_fingerprint(&self) -> Option<Fingerprint> {
         let fingerprint = xpub_to_fingerprint(&self.xpub).ok()?;
         if fingerprint == Fingerprint::default() {
@@ -67,49 +129,34 @@ impl TryFrom<&str> for Xpub {
     type Error = Error;
 
     fn try_from(xpub: &str) -> Result<Self, Self::Error> {
-        let (xpub, original_format) = match &xpub[..4] {
-            "zpub" => (zpub_to_xpub(xpub)?, OriginalFormat::Zpub),
-            "ypub" => (ypub_to_xpub(xpub)?, OriginalFormat::Ypub),
-            "xpub" => (xpub.to_string(), OriginalFormat::Xpub),
-            starting => return Err(Error::NotXpub(starting.to_string())),
-        };
+        if xpub.len() < 4 {
+            return Err(Error::TooShort(xpub.len()));
+        }
+
+        let decoded = base58::decode_check(xpub)?;
+        let (standard_xpub, original_format) = standardize_extended_public_key(decoded)?;
 
         Ok(Self {
-            xpub: Bip32Xpub::from_str(&xpub)?,
+            xpub: Bip32Xpub::from_str(&standard_xpub)?,
             original_format,
         })
     }
 }
 
-pub fn zpub_to_xpub(zpub: &str) -> Result<String, Error> {
-    let decoded = base58::decode_check(zpub)?;
-
-    // Replace version bytes (first 4 bytes) with xpub version
-    let mut xpub_bytes = [0u8; 78];
-    xpub_bytes[0..4].copy_from_slice(&[0x04, 0x88, 0xB2, 0x1E]); // xpub version bytes
-    xpub_bytes[4..].copy_from_slice(&decoded[4..]);
-
-    // Re-encode as xpub
-    let xpub = base58::encode_check(&xpub_bytes);
-
-    Ok(xpub)
+pub fn to_standard_extended_public_key(xpub: &str) -> Result<String, Error> {
+    let decoded = base58::decode_check(xpub)?;
+    let (standard_xpub, _) = standardize_extended_public_key(decoded)?;
+    Ok(standard_xpub)
 }
 
+#[deprecated(since = "0.6.0", note = "use to_standard_extended_public_key")]
+pub fn zpub_to_xpub(zpub: &str) -> Result<String, Error> {
+    to_standard_extended_public_key(zpub)
+}
+
+#[deprecated(since = "0.6.0", note = "use to_standard_extended_public_key")]
 pub fn ypub_to_xpub(ypub: &str) -> Result<String, Error> {
-    let decoded = base58::decode_check(ypub).map_err(Error::InvalidYpubDecode)?;
-
-    if decoded.len() != 78 {
-        return Err(Error::InvalidYpubLength(decoded.len()));
-    }
-
-    let mut xpub_bytes = [0u8; 78];
-    xpub_bytes.copy_from_slice(&decoded);
-    xpub_bytes[0..4].copy_from_slice(&[0x04, 0x88, 0xB2, 0x1E]); // xpub version bytes
-
-    // Re-encode as xpub
-    let xpub = base58::encode_check(&xpub_bytes);
-
-    Ok(xpub)
+    to_standard_extended_public_key(ypub)
 }
 
 pub fn xpub_to_fingerprint(xpub: &Bip32Xpub) -> Result<Fingerprint, Error> {
@@ -121,9 +168,64 @@ pub fn xpub_to_fingerprint(xpub: &Bip32Xpub) -> Result<Fingerprint, Error> {
 }
 
 pub fn xpub_str_to_fingerprint(xpub: &str) -> Result<Fingerprint, Error> {
-    let xpub = Bip32Xpub::from_str(xpub)?;
-    let fingerprint = xpub_to_fingerprint(&xpub)?;
+    let xpub = Xpub::try_from(xpub)?;
+    let fingerprint = xpub_to_fingerprint(&xpub.xpub)?;
     Ok(fingerprint)
+}
+
+fn standardize_extended_public_key(
+    mut decoded: Vec<u8>,
+) -> Result<(String, OriginalFormat), Error> {
+    if decoded.len() != EXTENDED_KEY_LENGTH {
+        return Err(Error::InvalidExtendedKeyLength(decoded.len()));
+    }
+
+    let version = version_bytes(&decoded);
+    let info = version_info(version)?;
+
+    decoded[0..4].copy_from_slice(&info.standard_version);
+    let standard_xpub = base58::encode_check(&decoded);
+    Ok((standard_xpub, info.original_format))
+}
+
+fn version_bytes(decoded: &[u8]) -> [u8; 4] {
+    decoded[0..4]
+        .try_into()
+        .expect("checked extended key length")
+}
+
+fn version_info(version: [u8; 4]) -> Result<VersionInfo, Error> {
+    let info = match version {
+        XPUB_VERSION => VersionInfo::new(OriginalFormat::Xpub, XPUB_VERSION),
+        YPUB_VERSION => VersionInfo::new(OriginalFormat::Ypub, XPUB_VERSION),
+        ZPUB_VERSION => VersionInfo::new(OriginalFormat::Zpub, XPUB_VERSION),
+        TPUB_VERSION => VersionInfo::new(OriginalFormat::Tpub, TPUB_VERSION),
+        UPUB_VERSION => VersionInfo::new(OriginalFormat::Upub, TPUB_VERSION),
+        VPUB_VERSION => VersionInfo::new(OriginalFormat::Vpub, TPUB_VERSION),
+        XPRV_VERSION => return Err(Error::UnsupportedPrivateKey("xprv")),
+        YPRV_VERSION => return Err(Error::UnsupportedPrivateKey("yprv")),
+        ZPRV_VERSION => return Err(Error::UnsupportedPrivateKey("zprv")),
+        TPRV_VERSION => return Err(Error::UnsupportedPrivateKey("tprv")),
+        UPRV_VERSION => return Err(Error::UnsupportedPrivateKey("uprv")),
+        VPRV_VERSION => return Err(Error::UnsupportedPrivateKey("vprv")),
+        version => return Err(Error::UnsupportedVersion(version)),
+    };
+
+    Ok(info)
+}
+
+struct VersionInfo {
+    original_format: OriginalFormat,
+    standard_version: [u8; 4],
+}
+
+impl VersionInfo {
+    fn new(original_format: OriginalFormat, standard_version: [u8; 4]) -> Self {
+        Self {
+            original_format,
+            standard_version,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -131,60 +233,111 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
+    const BIP49_XPUB: &str = "xpub6C6nQwHaWbSrzs5tZ1q7m5R9cPK9eYpNMFesiXsYrgc1P8bvLLAet9JfHjYXKjToD8cBRswJXXbbFpXgwsswVPAZzKMa1jUp2kVkGVUaJa7";
+    const BIP49_YPUB: &str = "ypub6Ww3ibxVfGzLrAH1PNcjyAWenMTbbAosGNB6VvmSEgytSER9azLDWCxoJwW7Ke7icmizBMXrzBx9979FfaHxHcrArf3zbeJJJUZPf663zsP";
+    const BIP84_XPUB: &str = "xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V";
+    const BIP84_ZPUB: &str = "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs";
+
     #[test]
     fn test_zpub_to_xpub() {
-        let zpub = "zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1";
-        let xpub_str = "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM";
-        let xpub = Xpub::try_from(zpub);
+        let xpub = Xpub::try_from(BIP84_ZPUB);
 
         assert!(xpub.is_ok());
         let xpub = xpub.unwrap();
 
-        assert_eq!(xpub.xpub.to_string(), xpub_str);
+        assert_eq!(xpub.xpub.to_string(), BIP84_XPUB);
+        assert_eq!(xpub.original_format(), OriginalFormat::Zpub);
+        assert_eq!(xpub.single_sig_purpose(), Some(SingleSigPurpose::Bip84));
     }
 
     #[test]
     fn test_ypub_to_xpub() {
-        let ypub = "ypub6X2aUb9NXbQM65mQy6oFECSB1CdSanwXHGTUcw7vt2LaAteuYtLoDQ6ao1fXDsenrZjgJKJyHvLypBBeo59cSKUivvwW8S6k7PVvQkVosxZ";
-        let xpub_str = "xpub6CCKAvUTNursEnaJ8k1d27LfqEUzeAx2N9wFqYE3W1xh7nqgJEBEbLSSmohwDxzsSvcsYqiQqFzRvta65Njbe5o84bF5YXHFqfSH2Dkhonm";
-        let xpub = Xpub::try_from(ypub);
+        let xpub = Xpub::try_from(BIP49_YPUB);
 
         assert!(xpub.is_ok());
         let xpub = xpub.unwrap();
 
-        assert_eq!(xpub.xpub.to_string().as_str(), xpub_str);
+        assert_eq!(xpub.xpub.to_string().as_str(), BIP49_XPUB);
+        assert_eq!(xpub.original_format(), OriginalFormat::Ypub);
+        assert_eq!(xpub.single_sig_purpose(), Some(SingleSigPurpose::Bip49));
     }
 
     #[test]
-    fn test_zpub_to_xpub_direct() {
-        // same test vector as test_zpub_to_xpub above
-        let zpub = "zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1";
-        let expected = "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM";
+    fn test_upub_to_tpub() {
+        let upub = key_with_version(BIP49_YPUB, UPUB_VERSION);
+        let tpub = key_with_version(BIP49_XPUB, TPUB_VERSION);
 
-        let result = zpub_to_xpub(zpub).expect("should convert zpub to xpub");
-        assert_eq!(result, expected);
+        let xpub = Xpub::try_from(upub.as_str()).expect("should convert upub to tpub");
+
+        assert_eq!(xpub.xpub.to_string(), tpub);
+        assert_eq!(xpub.original_format(), OriginalFormat::Upub);
+        assert_eq!(xpub.single_sig_purpose(), Some(SingleSigPurpose::Bip49));
     }
 
     #[test]
-    fn test_ypub_to_xpub_direct() {
-        let ypub = "ypub6X2aUb9NXbQM65mQy6oFECSB1CdSanwXHGTUcw7vt2LaAteuYtLoDQ6ao1fXDsenrZjgJKJyHvLypBBeo59cSKUivvwW8S6k7PVvQkVosxZ";
-        let expected = "xpub6CCKAvUTNursEnaJ8k1d27LfqEUzeAx2N9wFqYE3W1xh7nqgJEBEbLSSmohwDxzsSvcsYqiQqFzRvta65Njbe5o84bF5YXHFqfSH2Dkhonm";
+    fn test_vpub_to_tpub() {
+        let vpub = key_with_version(BIP84_ZPUB, VPUB_VERSION);
+        let tpub = key_with_version(BIP84_XPUB, TPUB_VERSION);
 
-        let result = ypub_to_xpub(ypub).expect("should convert ypub to xpub");
-        assert_eq!(result, expected);
+        let xpub = Xpub::try_from(vpub.as_str()).expect("should convert vpub to tpub");
+
+        assert_eq!(xpub.xpub.to_string(), tpub);
+        assert_eq!(xpub.original_format(), OriginalFormat::Vpub);
+        assert_eq!(xpub.single_sig_purpose(), Some(SingleSigPurpose::Bip84));
     }
 
     #[test]
-    fn test_zpub_to_xpub_invalid() {
+    fn test_to_standard_extended_public_key() {
+        let result =
+            to_standard_extended_public_key(BIP84_ZPUB).expect("should convert zpub to xpub");
+        assert_eq!(result, BIP84_XPUB);
+    }
+
+    #[test]
+    fn test_invalid_slip132_key() {
         let invalid = "zpubINVALID";
-        let result = zpub_to_xpub(invalid);
+        let result = to_standard_extended_public_key(invalid);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_ypub_to_xpub_invalid() {
-        let invalid = "ypubINVALID";
-        let result = ypub_to_xpub(invalid);
-        assert!(result.is_err());
+    fn test_private_prefixes_are_not_supported() {
+        for (version, prefix) in [
+            (XPRV_VERSION, "xprv"),
+            (YPRV_VERSION, "yprv"),
+            (ZPRV_VERSION, "zprv"),
+            (TPRV_VERSION, "tprv"),
+            (UPRV_VERSION, "uprv"),
+            (VPRV_VERSION, "vprv"),
+        ] {
+            let key = key_with_version(BIP49_XPUB, version);
+            let result = Xpub::try_from(key.as_str());
+
+            assert!(matches!(
+                result,
+                Err(Error::UnsupportedPrivateKey(actual)) if actual == prefix
+            ));
+        }
+    }
+
+    #[test]
+    fn test_multisig_prefixes_are_not_supported() {
+        for version in [
+            [0x02, 0x95, 0xb4, 0x3f],
+            [0x02, 0xaa, 0x7e, 0xd3],
+            [0x02, 0x42, 0x89, 0xef],
+            [0x02, 0x57, 0x54, 0x83],
+        ] {
+            let key = key_with_version(BIP49_XPUB, version);
+            let result = Xpub::try_from(key.as_str());
+
+            assert!(matches!(result, Err(Error::UnsupportedVersion(_))));
+        }
+    }
+
+    fn key_with_version(key: &str, version: [u8; 4]) -> String {
+        let mut decoded = base58::decode_check(key).expect("valid test vector");
+        decoded[0..4].copy_from_slice(&version);
+        base58::encode_check(&decoded)
     }
 }
