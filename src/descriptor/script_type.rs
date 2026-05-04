@@ -1,4 +1,4 @@
-use bitcoin::bip32::DerivationPath;
+use bitcoin::bip32::{ChildNumber, DerivationPath};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -31,6 +31,9 @@ pub enum Error {
 
     #[error("Path is not hardened")]
     NotHardened,
+
+    #[error("Invalid child number: {0}")]
+    InvalidChildNumber(u32),
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -54,27 +57,28 @@ impl ScriptType {
         }
     }
 
-    pub fn descriptor_derivation_path(&self) -> String {
-        self.descriptor_derivation_path_for_coin_type(0)
-    }
-
-    pub fn descriptor_derivation_path_for_coin_type(&self, coin_type: u32) -> String {
+    pub fn purpose(&self) -> u32 {
         match self {
-            ScriptType::P2pkh => format!("44'/{coin_type}'/0'"),
-            ScriptType::P2shP2wpkh => format!("49'/{coin_type}'/0'"),
-            ScriptType::P2wpkh => format!("84'/{coin_type}'/0'"),
-            ScriptType::P2tr => format!("86'/{coin_type}'/0'"),
+            ScriptType::P2pkh => 44,
+            ScriptType::P2shP2wpkh => 49,
+            ScriptType::P2wpkh => 84,
+            ScriptType::P2tr => 86,
         }
     }
 
-    pub fn wrap_with(&self, script: &str) -> String {
-        match &self {
-            ScriptType::P2pkh => format!("pkh({})", script),
-            ScriptType::P2shP2wpkh => format!("sh(wpkh({}))", script),
-            ScriptType::P2wpkh => format!("wpkh({})", script),
-            ScriptType::P2tr => format!("tr({})", script),
-        }
+    pub fn account_derivation_path_for_coin_type(&self, coin_type: u32) -> Result<DerivationPath> {
+        let path = vec![
+            hardened_child_number(self.purpose())?,
+            hardened_child_number(coin_type)?,
+            hardened_child_number(0)?,
+        ];
+
+        Ok(DerivationPath::from(path))
     }
+}
+
+fn hardened_child_number(index: u32) -> Result<ChildNumber, Error> {
+    ChildNumber::from_hardened_idx(index).map_err(|_| Error::InvalidChildNumber(index))
 }
 
 fn hardened_or_error(path: &[u32], script_type: ScriptType) -> Result<ScriptType, Error> {
