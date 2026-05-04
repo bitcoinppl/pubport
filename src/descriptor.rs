@@ -242,12 +242,13 @@ impl TryFrom<WasabiJson> for Descriptors {
     fn try_from(json: WasabiJson) -> Result<Self, Self::Error> {
         let fingerprint = Fingerprint::from_str(&json.master_fingerprint)?;
         let xpub = xpub::Xpub::try_from(json.ext_pub_key.as_str())?;
+        let coin_type = xpub.coin_type();
 
         DescriptorBuilder::account_xpub_for_coin_type(
             ScriptType::P2wpkh,
-            xpub.clone().into_bip32(),
+            xpub.into_bip32(),
             fingerprint,
-            xpub.coin_type(),
+            coin_type,
         )?
         .build()
     }
@@ -367,7 +368,7 @@ where
     Ok(descriptor)
 }
 
-pub(super) fn split_multipath_descriptor(
+fn split_multipath_descriptor(
     descriptor: Descriptor<DescriptorPublicKey>,
 ) -> Result<Descriptors, Error> {
     let multi = descriptor.into_single_descriptors()?;
