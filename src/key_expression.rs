@@ -1,5 +1,8 @@
-//! Parse a key expression string into a KeyExpression, we only support KeyExpressions that contain
-//! an XPub, we do not support KeyExpressions that contain a private key or bare compressed or uncompressed public keys.
+//! Parse BIP380-style key expressions
+//!
+//! Pubport supports key expressions that contain an xpub-like extended public
+//! key. Expressions with private keys, bare compressed public keys, or bare
+//! uncompressed public keys are not supported
 
 use bitcoin::bip32::{DerivationPath, Fingerprint, Xpub};
 use serde::{Deserialize, Serialize};
@@ -7,72 +10,99 @@ use std::str::FromStr;
 
 use crate::xpub::OriginalFormat;
 
+/// A parsed xpub key expression
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
-/// A parsed key expression
 pub struct KeyExpression {
-    /// the public key in xpub format
+    /// The public key in standard xpub or tpub format
     pub xpub: Xpub,
 
-    /// the extended public key format before descriptor normalization
+    /// The extended public key format before descriptor normalization
     #[serde(default)]
     pub xpub_original_format: Option<OriginalFormat>,
 
-    /// the master fingerprint if present in the origin
+    /// The master fingerprint if present in the origin
     pub master_fingerprint: Option<Fingerprint>,
 
-    /// the derivation path if present in the origin
+    /// The derivation path if present in the origin
     pub origin_derivation_path: Option<DerivationPath>,
 
-    /// the derivation path if present after the xpub
-    /// string to allow representing wildcard paths
+    /// The derivation path if present after the xpub
+    ///
+    /// This is stored as a string so wildcard paths can be represented
     pub xpub_derivation_path: Option<String>,
 }
 
 /// Errors that can occur when parsing a key expression
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The expression contained non-ASCII input
     #[error("A valid key expression must contain only ASCII digits")]
     NotAsciiDigits,
 
+    /// The key origin section was malformed
     #[error("Invalid key origin format")]
     InvalidKeyOrigin,
 
+    /// The key origin included a child derivation indicator
     #[error("Children indicator not allowed in key origin: {0}")]
     ChildrenIndicatorInKeyOrigin(String),
 
+    /// The key origin ended with a trailing slash
     #[error("Trailing slash in key origin")]
     TrailingSlashInKeyOrigin,
 
+    /// The fingerprint was not eight hexadecimal characters
     #[error("Invalid fingerprint length (must be 8 characters), was {0}")]
     InvalidFingerprintLength(usize),
 
+    /// A hardened path component used an unsupported marker
     #[error("Invalid hardened indicator, must be 'h' or \"'\" found {0}")]
     InvalidHardenedIndicator(char),
 
+    /// A path component used a negative index
     #[error("Negative indices are not allowed")]
     NegativeIndices,
 
+    /// More than one key origin section was present
     #[error("Multiple key origins are not allowed")]
     MultipleKeyOrigins(String),
 
+    /// The key origin closing bracket was found without an opening bracket
     #[error("Missing key origin start bracket: {0}")]
     MissingKeyOriginStart(String),
 
+    /// The fingerprint contained non-hexadecimal characters
     #[error("Non-hexadecimal fingerprint: {0}")]
     NonHexFingerprint(String),
 
+    /// A key origin was present without a following public key
     #[error("Key origin with no public key: {0}")]
     KeyOriginWithNoPublicKey(String),
 
+    /// Extended public-key parsing failed
     #[error("Failed to parse Xpub: {0}")]
     XpubParseError(#[from] crate::xpub::Error),
 
+    /// Derivation path parsing failed
     #[error("Failed to parse derivation path: {0}")]
     DerivationPathParseError(bitcoin::bip32::Error),
 }
 
 impl KeyExpression {
-    /// Parse a key expression string into a KeyExpression struct using winnow
+    /// Parse a key expression string into a [`KeyExpression`]
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use pubport::key_expression::KeyExpression;
+    ///
+    /// let expression = "[817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/0/*";
+    /// let key = KeyExpression::try_from_str(expression)?;
+    ///
+    /// assert!(key.has_descriptor_fields());
+    ///
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn try_from_str(input_str: &str) -> Result<Self, Error> {
         let input_str = input_str.trim();
 

@@ -9,7 +9,12 @@
 
 <!-- cargo-rdme start -->
 
-A tool to import a wallet public key with descriptors from many different formats seamlessly
+Parse wallet public-key exports into descriptors
+
+Pubport accepts common single-sig wallet export formats and converts them
+into external and internal output descriptors. Use [`parse_from_str`] or
+[`Format::try_new_from_str`] when you have an unknown export string, then
+match on [`Format`] to inspect the parsed descriptors
 
 ## Supported formats
 
@@ -28,7 +33,6 @@ A tool to import a wallet public key with descriptors from many different format
 ## Examples
 
 ### Import in generic JSON format used by many wallets
-
 ```rust
 use pubport::Format;
 
@@ -43,7 +47,7 @@ assert!(matches!(format, Format::Json(_)));
 
 ### Import from file containing descriptors
 
-**_note: need external and internal descriptors, but can be single descriptor or multiple descriptor format_**
+***note: need external and internal descriptors, but can be single descriptor or multiple descriptor format***
 
 ```rust
 use pubport::Format;

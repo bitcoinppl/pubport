@@ -21,30 +21,43 @@ const TPRV_VERSION: [u8; 4] = [0x04, 0x35, 0x83, 0x94];
 const UPRV_VERSION: [u8; 4] = [0x04, 0x4a, 0x4e, 0x28];
 const VPRV_VERSION: [u8; 4] = [0x04, 0x5f, 0x18, 0xbc];
 
+/// Errors returned while parsing or normalizing extended public keys
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// BIP32 extended public-key parsing failed
     #[error("Invalid xpub: {0}")]
     InvalidXpub(#[from] bitcoin::bip32::Error),
 
+    /// Base58Check decoding failed
     #[error("Invalid extended public key: {0}")]
     InvalidBase58(#[from] base58::Error),
 
+    /// The decoded extended key does not have the BIP32 length
     #[error("Invalid extended public key length: {0}")]
     InvalidExtendedKeyLength(usize),
 
+    /// Private extended keys are intentionally unsupported
     #[error("Private extended keys are not supported: {0}")]
     UnsupportedPrivateKey(&'static str),
 
+    /// The extended-key version bytes are not recognized
     #[error("Unsupported extended public key version: {0:02x?}")]
     UnsupportedVersion([u8; 4]),
 
+    /// The input was too short to identify an extended-key prefix
     #[error("Too short, only {0} chars long")]
     TooShort(usize),
 
+    /// A required xpub field was missing
     #[error("Missing xpub")]
     MissingXpub,
 }
 
+/// An extended public key normalized to standard BIP32 encoding
+///
+/// The parser accepts `xpub`, `ypub`, `zpub`, `tpub`, `upub`, and `vpub`
+/// prefixes. Internally the key is converted to the standard `xpub` or `tpub`
+/// version while preserving the original prefix in [`OriginalFormat`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Xpub {
     xpub: Bip32Xpub,
@@ -57,6 +70,7 @@ impl std::fmt::Display for Xpub {
     }
 }
 
+/// Original extended public-key prefix before normalization
 #[derive(
     Debug,
     Clone,
@@ -71,31 +85,45 @@ impl std::fmt::Display for Xpub {
     derive_more::Display,
 )]
 pub enum OriginalFormat {
+    /// Mainnet standard xpub
     Xpub,
+    /// Mainnet BIP49 ypub
     Ypub,
+    /// Mainnet BIP84 zpub
     Zpub,
+    /// Testnet or signet standard tpub
     Tpub,
+    /// Testnet or signet BIP49 upub
     Upub,
+    /// Testnet or signet BIP84 vpub
     Vpub,
 }
 
+/// Script purpose encoded by an extended public-key prefix
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 pub enum SingleSigPurpose {
+    /// BIP49 nested SegWit
     Bip49,
+    /// BIP84 native SegWit
     Bip84,
 }
 
 impl Xpub {
+    /// Return the normalized BIP32 extended public key
     pub fn into_bip32(self) -> Bip32Xpub {
         self.xpub
     }
 
+    /// Return the original extended-key prefix detected during parsing
     pub fn original_format(&self) -> OriginalFormat {
         self.original_format
     }
 
+    /// Return the BIP44 coin type implied by the original prefix
+    ///
+    /// Mainnet prefixes return `0`; testnet and signet prefixes return `1`
     pub fn coin_type(&self) -> u32 {
         match self.original_format {
             OriginalFormat::Xpub | OriginalFormat::Ypub | OriginalFormat::Zpub => 0,
@@ -103,6 +131,10 @@ impl Xpub {
         }
     }
 
+    /// Return the single-sig BIP purpose implied by the original prefix
+    ///
+    /// Prefixes that do not encode a script purpose, such as `xpub` and `tpub`,
+    /// return `None`
     pub fn single_sig_purpose(&self) -> Option<SingleSigPurpose> {
         match self.original_format {
             OriginalFormat::Ypub | OriginalFormat::Upub => Some(SingleSigPurpose::Bip49),
@@ -111,6 +143,7 @@ impl Xpub {
         }
     }
 
+    /// Return the parent fingerprint when it is available and nonzero
     pub fn master_fingerprint(&self) -> Option<Fingerprint> {
         let fingerprint = xpub_to_fingerprint(&self.xpub).ok()?;
         if fingerprint == Fingerprint::default() {
@@ -120,6 +153,7 @@ impl Xpub {
         Some(fingerprint)
     }
 
+    /// Return the fingerprint of the normalized xpub itself
     pub fn fingerprint(&self) -> Fingerprint {
         self.xpub.fingerprint()
     }
@@ -143,22 +177,37 @@ impl TryFrom<&str> for Xpub {
     }
 }
 
+/// Convert a supported extended public key to standard `xpub` or `tpub` form
+///
+/// # Examples
+///
+/// ```rust
+/// let ypub = "ypub6Ww3ibxVfGzLrAH1PNcjyAWenMTbbAosGNB6VvmSEgytSER9azLDWCxoJwW7Ke7icmizBMXrzBx9979FfaHxHcrArf3zbeJJJUZPf663zsP";
+/// let xpub = pubport::xpub::to_standard_extended_public_key(ypub)?;
+///
+/// assert!(xpub.starts_with("xpub"));
+///
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub fn to_standard_extended_public_key(xpub: &str) -> Result<String, Error> {
     let decoded = base58::decode_check(xpub)?;
     let (standard_xpub, _) = standardize_extended_public_key(decoded)?;
     Ok(standard_xpub)
 }
 
+/// Convert a zpub to standard xpub form
 #[deprecated(since = "0.6.0", note = "use to_standard_extended_public_key")]
 pub fn zpub_to_xpub(zpub: &str) -> Result<String, Error> {
     to_standard_extended_public_key(zpub)
 }
 
+/// Convert a ypub to standard xpub form
 #[deprecated(since = "0.6.0", note = "use to_standard_extended_public_key")]
 pub fn ypub_to_xpub(ypub: &str) -> Result<String, Error> {
     to_standard_extended_public_key(ypub)
 }
 
+/// Return the parent fingerprint for an xpub, falling back to its own fingerprint
 pub fn xpub_to_fingerprint(xpub: &Bip32Xpub) -> Result<Fingerprint, Error> {
     let fingerprint = match xpub.parent_fingerprint.as_bytes() {
         [0, 0, 0, 0] => xpub.fingerprint(),
@@ -167,6 +216,7 @@ pub fn xpub_to_fingerprint(xpub: &Bip32Xpub) -> Result<Fingerprint, Error> {
     Ok(fingerprint)
 }
 
+/// Parse an xpub-like string and return its parent or self fingerprint
 pub fn xpub_str_to_fingerprint(xpub: &str) -> Result<Fingerprint, Error> {
     let xpub = Xpub::try_from(xpub)?;
     let fingerprint = xpub_to_fingerprint(&xpub.xpub)?;

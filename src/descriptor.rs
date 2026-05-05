@@ -19,62 +19,82 @@ use crate::{
 pub use builder::DescriptorBuilder;
 pub use script_type::ScriptType;
 
+/// Errors returned while parsing or building descriptors
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Miniscript descriptor key parsing failed
     #[error("Invalid descriptor: {0:?}")]
     InvalidDescriptor(#[from] DescriptorKeyParseError),
 
+    /// A single descriptor line did not contain both change branches
     #[error("Single descriptor line did not contain both external and internal keys")]
     MissingKeys,
 
+    /// More than one external/internal descriptor pair was provided
     #[error("Too many keys in descriptor, only supports 1 external and 1 internal key, found {0}")]
     TooManyKeys(usize),
 
+    /// Miniscript descriptor parsing failed
     #[error("Unable to parse descriptor: {0}")]
     InvalidDescriptorParse(#[from] miniscript::Error),
 
+    /// JSON descriptor parsing failed
     #[error("Invalid JSON descriptor: {0}")]
     InvalidJsonDescriptor(#[from] serde_json::Error),
 
+    /// No descriptor text was provided
     #[error("Missing descriptor")]
     MissingDescriptor,
 
+    /// A required xpub field was missing
     #[error("Missing xpub")]
     MissingXpub,
 
+    /// A required derivation path field was missing
     #[error("Missing derivation path")]
     MissingDerivationPath,
 
+    /// A required script type field was missing
     #[error("Missing script type")]
     MissingScriptType,
 
+    /// A required master fingerprint field was missing
     #[error("Missing fingerprint (xfp)")]
     MissingFingerprint,
 
+    /// Extended public-key parsing failed
     #[error("Unable to parse xpub: {0:?}")]
     InvalidXpub(#[from] xpub::Error),
 
+    /// BIP32 extended public-key parsing failed
     #[error("Unable to parse xpub: {0}")]
     UnableToParseXpub(bitcoin::bip32::Error),
 
+    /// Derivation path parsing failed
     #[error("Unable to parse derivation path: {0}")]
     InvalidDerivationPath(bitcoin::bip32::Error),
 
+    /// Master fingerprint parsing failed
     #[error("Unable to parse fingerprint: {0}")]
     InvalidFingerprint(#[from] bitcoin::hex::HexToArrayError),
 
+    /// The descriptor did not contain an xpub
     #[error("Unable to get xpub from descriptor")]
     NoXpubInDescriptor,
 
+    /// The descriptor contained a single public key instead of an xpub
     #[error("Single pubkey is not supported, must be an extended key")]
     SinglePubkeyNotSupported,
 
+    /// A master xpub was provided where an account or child xpub is required
     #[error("Xpub is a master key, please use the child xpub for the derivation path")]
     MasterXpub,
 
+    /// Script type inference failed
     #[error("ScriptType parse error: {0}")]
     ScriptTypeParseError(#[from] script_type::Error),
 
+    /// A key expression was missing origin data required to build descriptors
     #[error("Creating descriptor from key expression requires a master fingerprint and origin derivation path")]
     MissingKeyExpressionFields,
 }
@@ -84,14 +104,17 @@ struct JsonDescriptor {
     descriptor: String,
 }
 
+/// External and internal output descriptors for a single-sig wallet
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct Descriptors {
+    /// Descriptor for receiving addresses on the external `/0/*` branch
     #[serde(
         serialize_with = "serialize_descriptor",
         deserialize_with = "deserialize_descriptor"
     )]
     pub external: Descriptor<DescriptorPublicKey>,
+    /// Descriptor for change addresses on the internal `/1/*` branch
     #[serde(
         serialize_with = "serialize_descriptor",
         deserialize_with = "deserialize_descriptor"
@@ -100,6 +123,7 @@ pub struct Descriptors {
 }
 
 impl Descriptors {
+    /// Parse a single multipath descriptor into external and internal descriptors
     pub fn try_from_line(line: &str) -> Result<Self, Error> {
         let secp = &secp256k1::Secp256k1::signing_only();
         let (descriptor, _keymap) =
@@ -112,6 +136,7 @@ impl Descriptors {
         split_multipath_descriptor(descriptor)
     }
 
+    /// Build descriptors from a generic single-sig JSON export entry
     pub fn try_from_single_sig(
         single_sig: SingleSig,
         fingerprint: Option<&str>,
@@ -137,6 +162,7 @@ impl Descriptors {
         DescriptorBuilder::new(script_type, xpub.into_bip32(), fingerprint, derivation_path).build()
     }
 
+    /// Build descriptors for a mainnet account xpub and script type
     pub fn try_from_child_xpub(
         xpub: bitcoin::bip32::Xpub,
         script_type: ScriptType,
@@ -144,6 +170,7 @@ impl Descriptors {
         Self::try_from_child_xpub_with_coin_type(xpub, script_type, 0)
     }
 
+    /// Build descriptors for an account xpub, script type, and BIP44 coin type
     pub fn try_from_child_xpub_with_coin_type(
         xpub: bitcoin::bip32::Xpub,
         script_type: ScriptType,
@@ -162,6 +189,7 @@ impl Descriptors {
         .build()
     }
 
+    /// Build descriptors from a key expression with origin fingerprint and path
     pub fn try_from_key_expression(key_expression: &KeyExpression) -> Result<Self, Error> {
         if let KeyExpression {
             xpub,
@@ -179,6 +207,7 @@ impl Descriptors {
         Err(Error::MissingKeyExpressionFields)
     }
 
+    /// Return the descriptor origin fingerprint if present and nonzero
     pub fn fingerprint(&self) -> Option<Fingerprint> {
         let desc = &self.external;
 
@@ -199,6 +228,7 @@ impl Descriptors {
         Some(fingerprint)
     }
 
+    /// Return the xpub from the external descriptor
     pub fn xpub(&self) -> Result<bitcoin::bip32::Xpub, Error> {
         let desc = &self.external;
 
@@ -226,10 +256,12 @@ mod ffi {
     use super::Descriptors;
 
     impl Descriptors {
+        /// Return the external descriptor string
         pub fn external(&self) -> String {
             self.external.to_string()
         }
 
+        /// Return the internal descriptor string
         pub fn internal(&self) -> String {
             self.internal.to_string()
         }
