@@ -1,11 +1,10 @@
-use serde::{Deserialize, Serialize};
-
 use crate::{
     descriptor::{self, Descriptors, ScriptType},
-    json::{self, GenericJson},
+    json::{self, GenericJson, WasabiJson},
     key_expression::KeyExpression,
     xpub,
 };
+use serde::{Deserialize, Serialize};
 
 /// A parsed wallet export format
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -27,24 +26,89 @@ pub enum Format {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Descriptor parsing failed
-    #[error("Invalid descriptor: {0:?}")]
+    #[error("Invalid descriptor: {0}")]
     InvalidDescriptor(#[from] descriptor::Error),
 
     /// JSON parsing failed
     #[error("Invalid json: {0}")]
     InvalidJsonParse(#[from] serde_json::Error),
 
-    /// A JSON export was recognized but could not produce descriptors
-    #[error("Unable to create descriptor from json")]
-    InvalidDescriptorInJson,
-
     /// A generic JSON export did not contain descriptor or xpub data
     #[error("Invalid json, no xpubs or descriptor")]
-    JsonNoDecriptor,
+    MissingJsonDescriptorData,
 
     /// Extended public-key parsing failed
     #[error("Invalid xpub: {0}")]
     InvalidXpub(#[from] xpub::Error),
+
+    /// No supported wallet export format matched the input
+    #[error("Unsupported wallet export format")]
+    UnsupportedFormat(Box<FormatDetectionErrors>),
+}
+
+/// Errors collected while trying to detect a wallet export format
+#[derive(Debug)]
+pub struct FormatDetectionErrors {
+    /// Generic JSON export parse or conversion failure
+    pub generic_json: Option<GenericJsonDetectionError>,
+    /// Wasabi JSON export parse or conversion failure
+    pub wasabi_json: Option<WalletJsonDetectionError>,
+    /// Electrum JSON export parse or conversion failure
+    pub electrum_json: Option<WalletJsonDetectionError>,
+    /// Descriptor text parse failure
+    pub descriptor: Option<descriptor::Error>,
+    /// Bare child xpub parse or conversion failure
+    pub child_xpub: Option<ChildXpubDetectionError>,
+    /// BIP380 key-expression parse failure
+    pub key_expression: Option<crate::key_expression::Error>,
+}
+
+impl std::fmt::Display for FormatDetectionErrors {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("no supported wallet export format matched")
+    }
+}
+
+impl std::error::Error for FormatDetectionErrors {}
+
+/// Generic JSON detection failure
+#[derive(Debug, thiserror::Error)]
+pub enum GenericJsonDetectionError {
+    /// JSON parsing failed
+    #[error("Invalid generic json: {0}")]
+    Parse(serde_json::Error),
+
+    /// The JSON did not contain descriptor or xpub data
+    #[error("Generic json did not contain descriptor or xpub data")]
+    MissingDescriptorData,
+
+    /// Descriptor construction from JSON failed
+    #[error("Unable to create descriptor from generic json: {0}")]
+    Descriptor(#[source] descriptor::Error),
+}
+
+/// Wallet-specific JSON detection failure
+#[derive(Debug, thiserror::Error)]
+pub enum WalletJsonDetectionError {
+    /// JSON parsing failed
+    #[error("Invalid wallet json: {0}")]
+    Parse(serde_json::Error),
+
+    /// Descriptor construction from JSON failed
+    #[error("Unable to create descriptor from wallet json: {0}")]
+    Descriptor(#[source] descriptor::Error),
+}
+
+/// Bare child xpub detection failure
+#[derive(Debug, thiserror::Error)]
+pub enum ChildXpubDetectionError {
+    /// Extended public-key parsing failed
+    #[error("Invalid child xpub: {0}")]
+    Xpub(#[source] xpub::Error),
+
+    /// Descriptor construction from the child xpub failed
+    #[error("Unable to create descriptor from child xpub: {0}")]
+    Descriptor(#[source] descriptor::Error),
 }
 
 /// Descriptors grouped by standard single-sig BIP purpose
@@ -70,7 +134,7 @@ impl TryFrom<GenericJson> for Json {
             && json.bip84.is_none()
             && json.bip86.is_none()
         {
-            return Err(Error::JsonNoDecriptor);
+            return Err(Error::MissingJsonDescriptorData);
         }
 
         let bip44 = json
@@ -106,7 +170,7 @@ impl TryFrom<GenericJson> for Json {
             .transpose()?;
 
         if bip44.is_none() && bip49.is_none() && bip84.is_none() && bip86.is_none() {
-            return Err(Error::JsonNoDecriptor);
+            return Err(Error::MissingJsonDescriptorData);
         }
 
         Ok(Json {
@@ -119,6 +183,32 @@ impl TryFrom<GenericJson> for Json {
 }
 
 impl Format {
+    fn detect_generic_json(string: &str) -> Result<Result<Self, GenericJsonDetectionError>, Error> {
+        let json = match serde_json::from_str::<json::GenericJson>(string) {
+            Ok(json) => json,
+            Err(error) => return Ok(Err(GenericJsonDetectionError::Parse(error))),
+        };
+
+        match Json::try_from(json) {
+            Ok(json) => Ok(Ok(Format::Json(Box::new(json)))),
+            Err(Error::MissingJsonDescriptorData) => {
+                Ok(Err(GenericJsonDetectionError::MissingDescriptorData))
+            }
+            Err(Error::InvalidDescriptor(error)) => {
+                Ok(Err(GenericJsonDetectionError::Descriptor(error)))
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    fn detect_wasabi_json(string: &str) -> Result<Self, WalletJsonDetectionError> {
+        let json: WasabiJson =
+            serde_json::from_str(string).map_err(WalletJsonDetectionError::Parse)?;
+
+        let desc = Descriptors::try_from(json).map_err(WalletJsonDetectionError::Descriptor)?;
+        Ok(Format::Wasabi(desc))
+    }
+
     /// Detect and parse a supported wallet export string
     ///
     /// Detection tries generic JSON, Wasabi JSON, Electrum JSON, descriptor
@@ -137,35 +227,50 @@ impl Format {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn try_new_from_str(string: &str) -> Result<Self, Error> {
-        if let Ok(json) = serde_json::from_str::<json::GenericJson>(string) {
-            if let Ok(json) = Json::try_from(json) {
-                return Ok(Format::Json(Box::new(json)));
-            }
-        }
-
-        if let Ok(json) = serde_json::from_str::<json::WasabiJson>(string) {
-            if let Ok(desc) = Descriptors::try_from(json) {
-                return Ok(Format::Wasabi(desc));
-            }
-        }
-
-        if let Ok(json) = serde_json::from_str::<json::ElectrumJson>(string) {
-            if let Ok(desc) = Descriptors::try_from(json) {
-                return Ok(Format::Electrum(desc));
-            }
-        }
-
-        if let Ok(desc) = Descriptors::try_from(string) {
-            return Ok(Format::Descriptor(desc));
-        }
-
-        let child_xpub_error = match Json::try_from_child_xpub_str(string) {
-            Ok(json) => return Ok(Format::Json(Box::new(json))),
-            Err(error) => error,
+        let generic_json = match Self::detect_generic_json(string)? {
+            Ok(format) => return Ok(format),
+            Err(error) => Some(error),
         };
 
-        let Ok(key_expression) = KeyExpression::try_from_str(string) else {
-            return Err(child_xpub_error);
+        let wasabi_json = match Self::detect_wasabi_json(string) {
+            Ok(format) => return Ok(format),
+            Err(error) => Some(error),
+        };
+
+        let electrum_json = match serde_json::from_str::<json::ElectrumJson>(string) {
+            Ok(json) => match Descriptors::try_from(json) {
+                Ok(desc) => return Ok(Format::Electrum(desc)),
+                Err(error) => Some(WalletJsonDetectionError::Descriptor(error)),
+            },
+            Err(error) => Some(WalletJsonDetectionError::Parse(error)),
+        };
+
+        let descriptor = match Descriptors::try_from(string) {
+            Ok(desc) => return Ok(Format::Descriptor(desc)),
+            Err(error) => Some(error),
+        };
+
+        let child_xpub = match Json::try_from_child_xpub_str(string) {
+            Ok(json) => return Ok(Format::Json(Box::new(json))),
+            Err(Error::InvalidXpub(error)) => Some(ChildXpubDetectionError::Xpub(error)),
+            Err(Error::InvalidDescriptor(error)) => {
+                Some(ChildXpubDetectionError::Descriptor(error))
+            }
+            Err(error) => return Err(error),
+        };
+
+        let key_expression = match KeyExpression::try_from_str(string) {
+            Ok(key_expression) => key_expression,
+            Err(error) => {
+                return Err(Error::UnsupportedFormat(Box::new(FormatDetectionErrors {
+                    generic_json,
+                    wasabi_json,
+                    electrum_json,
+                    descriptor,
+                    child_xpub,
+                    key_expression: Some(error),
+                })));
+            }
         };
 
         if key_expression.has_descriptor_fields() {
@@ -299,6 +404,62 @@ mod tests {
             Err(Error::InvalidDescriptor(
                 descriptor::Error::ScriptTypeParseError(_)
             ))
+        ));
+    }
+
+    #[test]
+    fn test_parse_unsupported_format_returns_detection_errors() {
+        let result = Format::try_new_from_str("not a wallet export");
+
+        let Err(Error::UnsupportedFormat(errors)) = result else {
+            panic!("Expected UnsupportedFormat");
+        };
+
+        assert!(matches!(
+            errors.generic_json,
+            Some(GenericJsonDetectionError::Parse(_))
+        ));
+        assert!(matches!(
+            errors.wasabi_json,
+            Some(WalletJsonDetectionError::Parse(_))
+        ));
+        assert!(matches!(
+            errors.electrum_json,
+            Some(WalletJsonDetectionError::Parse(_))
+        ));
+        assert!(errors.descriptor.is_some());
+        assert!(matches!(
+            errors.child_xpub,
+            Some(ChildXpubDetectionError::Xpub(_))
+        ));
+        assert!(errors.key_expression.is_some());
+    }
+
+    #[test]
+    fn test_parse_malformed_json_records_generic_json_parse_error() {
+        let result = Format::try_new_from_str("{");
+
+        let Err(Error::UnsupportedFormat(errors)) = result else {
+            panic!("Expected UnsupportedFormat");
+        };
+
+        assert!(matches!(
+            errors.generic_json,
+            Some(GenericJsonDetectionError::Parse(_))
+        ));
+    }
+
+    #[test]
+    fn test_parse_generic_json_without_descriptor_data_records_missing_data() {
+        let result = Format::try_new_from_str("{}");
+
+        let Err(Error::UnsupportedFormat(errors)) = result else {
+            panic!("Expected UnsupportedFormat");
+        };
+
+        assert!(matches!(
+            errors.generic_json,
+            Some(GenericJsonDetectionError::MissingDescriptorData)
         ));
     }
 
