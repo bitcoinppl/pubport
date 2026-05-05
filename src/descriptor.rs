@@ -1,6 +1,12 @@
+mod builder;
 mod script_type;
 
-use bitcoin::{bip32::Fingerprint, secp256k1};
+use std::str::FromStr as _;
+
+use bitcoin::{
+    bip32::{DerivationPath, Fingerprint},
+    secp256k1,
+};
 use miniscript::{descriptor::DescriptorKeyParseError, Descriptor, DescriptorPublicKey};
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +16,7 @@ use crate::{
     xpub,
 };
 
+pub use builder::DescriptorBuilder;
 pub use script_type::ScriptType;
 
 #[derive(Debug, thiserror::Error)]
@@ -49,6 +56,12 @@ pub enum Error {
 
     #[error("Unable to parse xpub: {0}")]
     UnableToParseXpub(bitcoin::bip32::Error),
+
+    #[error("Unable to parse derivation path: {0}")]
+    InvalidDerivationPath(bitcoin::bip32::Error),
+
+    #[error("Unable to parse fingerprint: {0}")]
+    InvalidFingerprint(#[from] bitcoin::hex::HexToArrayError),
 
     #[error("Unable to get xpub from descriptor")]
     NoXpubInDescriptor,
@@ -96,18 +109,7 @@ impl Descriptors {
             return Err(Error::MissingKeys);
         }
 
-        let multi = descriptor.into_single_descriptors()?;
-
-        match multi.len() {
-            2 => (),
-            0 | 1 => return Err(Error::MissingKeys),
-            n => return Err(Error::TooManyKeys(n)),
-        };
-
-        Ok(Self {
-            external: multi[0].clone(),
-            internal: multi[1].clone(),
-        })
+        split_multipath_descriptor(descriptor)
     }
 
     pub fn try_from_single_sig(
@@ -124,20 +126,15 @@ impl Descriptors {
 
         let xpub = xpub::Xpub::try_from(xpub_str.as_str())?;
 
-        let fingerprint = fingerprint
-            .ok_or(Error::MissingFingerprint)?
-            .to_ascii_lowercase();
+        let fingerprint = Fingerprint::from_str(fingerprint.ok_or(Error::MissingFingerprint)?)?;
+        let derivation_path = parse_derivation_path(
+            single_sig
+                .deriv
+                .as_deref()
+                .ok_or(Error::MissingDerivationPath)?,
+        )?;
 
-        let derivation_path = single_sig
-            .deriv
-            .ok_or(Error::MissingDerivationPath)?
-            .replace("m/", "");
-
-        let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
-        let desc = script_type.wrap_with(&script);
-
-        let desc = Descriptors::try_from_line(&desc)?;
-        Ok(desc)
+        DescriptorBuilder::new(script_type, xpub.into_bip32(), fingerprint, derivation_path).build()
     }
 
     pub fn try_from_child_xpub(
@@ -156,16 +153,13 @@ impl Descriptors {
             return Err(Error::MasterXpub);
         }
 
-        let descriptor_derivation_path =
-            script_type.descriptor_derivation_path_for_coin_type(coin_type);
-
-        // with just the child xpub we can't get the master fingerprint
-        let fingerprint = "00000000";
-        let desc_script = format!("[{fingerprint}/{descriptor_derivation_path}]{xpub}/<0;1>/*");
-        let desc_string = script_type.wrap_with(&desc_script);
-
-        let desc = Descriptors::try_from_line(&desc_string)?;
-        Ok(desc)
+        DescriptorBuilder::account_xpub_for_coin_type(
+            script_type,
+            xpub,
+            Fingerprint::default(),
+            coin_type,
+        )?
+        .build()
     }
 
     pub fn try_from_key_expression(key_expression: &KeyExpression) -> Result<Self, Error> {
@@ -177,10 +171,9 @@ impl Descriptors {
         } = key_expression
         {
             let script_type = ScriptType::try_from_derivation_path(path)?;
-            let script = format!("[{master_fingerprint}/{path}]{xpub}/<0;1>/*");
-            let desc = script_type.wrap_with(&script);
 
-            return Descriptors::try_from_line(&desc);
+            return DescriptorBuilder::new(script_type, *xpub, *master_fingerprint, path.clone())
+                .build();
         }
 
         Err(Error::MissingKeyExpressionFields)
@@ -247,16 +240,17 @@ impl TryFrom<WasabiJson> for Descriptors {
     type Error = Error;
 
     fn try_from(json: WasabiJson) -> Result<Self, Self::Error> {
-        let fingerprint = json.master_fingerprint.to_ascii_lowercase();
+        let fingerprint = Fingerprint::from_str(&json.master_fingerprint)?;
         let xpub = xpub::Xpub::try_from(json.ext_pub_key.as_str())?;
-        let derivation_path =
-            ScriptType::P2wpkh.descriptor_derivation_path_for_coin_type(xpub.coin_type());
+        let coin_type = xpub.coin_type();
 
-        let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
-        let desc = ScriptType::P2wpkh.wrap_with(&script);
-
-        let desc = Descriptors::try_from_line(&desc)?;
-        Ok(desc)
+        DescriptorBuilder::account_xpub_for_coin_type(
+            ScriptType::P2wpkh,
+            xpub.into_bip32(),
+            fingerprint,
+            coin_type,
+        )?
+        .build()
     }
 }
 
@@ -293,21 +287,15 @@ impl TryFrom<ElectrumJson> for Descriptors {
         let fingerprint = match (&keystore.ckcc_xfp, &keystore.ckcc_xpub) {
             (Some(fingerprint), _) => {
                 let xfp = fingerprint.swap_bytes();
-                format!("{:08X}", xfp)
+                Fingerprint::from_str(&format!("{xfp:08X}"))?
             }
-            (None, Some(ck_xpub)) => xpub::xpub_str_to_fingerprint(ck_xpub)?.to_string(),
-            (None, None) => xpub
-                .master_fingerprint()
-                .ok_or(Error::NoXpubInDescriptor)?
-                .to_string(),
+            (None, Some(ck_xpub)) => xpub::xpub_str_to_fingerprint(ck_xpub)?,
+            (None, None) => xpub.master_fingerprint().ok_or(Error::NoXpubInDescriptor)?,
         };
 
-        let derivation_path = keystore.derivation.replace("m/", "");
-        let script = format!("[{fingerprint}/{derivation_path}]{xpub}/<0;1>/*");
-        let desc = script_type.wrap_with(&script);
+        let derivation_path = parse_derivation_path(&keystore.derivation)?;
 
-        let desc = Descriptors::try_from_line(&desc)?;
-        Ok(desc)
+        DescriptorBuilder::new(script_type, xpub.into_bip32(), fingerprint, derivation_path).build()
     }
 }
 
@@ -380,16 +368,144 @@ where
     Ok(descriptor)
 }
 
+fn split_multipath_descriptor(
+    descriptor: Descriptor<DescriptorPublicKey>,
+) -> Result<Descriptors, Error> {
+    let multi = descriptor.into_single_descriptors()?;
+
+    match multi.len() {
+        2 => (),
+        0 | 1 => return Err(Error::MissingKeys),
+        n => return Err(Error::TooManyKeys(n)),
+    };
+
+    Ok(Descriptors {
+        external: multi[0].clone(),
+        internal: multi[1].clone(),
+    })
+}
+
+fn parse_derivation_path(path: &str) -> Result<DerivationPath, Error> {
+    let path = path.strip_prefix("m/").unwrap_or(path);
+    DerivationPath::from_str(path).map_err(Error::InvalidDerivationPath)
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr as _;
 
     use super::*;
+    use bitcoin::bip32::Xpub;
     use pretty_assertions::assert_eq;
+
+    const ACCOUNT_XPUB: &str = "xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM";
+    const FINGERPRINT: &str = "817e7be0";
 
     fn known_desc() -> Descriptors {
         let known_desc = "wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/<0;1>/*)#60tjs4c7";
         Descriptors::try_from_line(known_desc).unwrap()
+    }
+
+    fn account_xpub() -> Xpub {
+        Xpub::from_str(ACCOUNT_XPUB).unwrap()
+    }
+
+    fn fingerprint() -> Fingerprint {
+        Fingerprint::from_str(FINGERPRINT).unwrap()
+    }
+
+    fn assert_builder_matches_descriptor(
+        script_type: ScriptType,
+        coin_type: u32,
+        external_prefix: &str,
+        internal_prefix: &str,
+    ) {
+        let desc = DescriptorBuilder::account_xpub_for_coin_type(
+            script_type,
+            account_xpub(),
+            fingerprint(),
+            coin_type,
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+
+        assert!(desc.external.to_string().starts_with(external_prefix));
+        assert!(desc.internal.to_string().starts_with(internal_prefix));
+    }
+
+    #[test]
+    fn test_descriptor_builder_bip44_mainnet_and_testnet_paths() {
+        assert_builder_matches_descriptor(
+            ScriptType::P2pkh,
+            0,
+            "pkh([817e7be0/44'/0'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/0/*)#",
+            "pkh([817e7be0/44'/0'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/1/*)#",
+        );
+        assert_builder_matches_descriptor(
+            ScriptType::P2pkh,
+            1,
+            "pkh([817e7be0/44'/1'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/0/*)#",
+            "pkh([817e7be0/44'/1'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/1/*)#",
+        );
+    }
+
+    #[test]
+    fn test_descriptor_builder_bip49_mainnet_and_testnet_paths() {
+        assert_builder_matches_descriptor(
+            ScriptType::P2shP2wpkh,
+            0,
+            "sh(wpkh([817e7be0/49'/0'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/0/*))#",
+            "sh(wpkh([817e7be0/49'/0'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/1/*))#",
+        );
+        assert_builder_matches_descriptor(
+            ScriptType::P2shP2wpkh,
+            1,
+            "sh(wpkh([817e7be0/49'/1'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/0/*))#",
+            "sh(wpkh([817e7be0/49'/1'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/1/*))#",
+        );
+    }
+
+    #[test]
+    fn test_descriptor_builder_bip84_mainnet_and_testnet_paths() {
+        assert_builder_matches_descriptor(
+            ScriptType::P2wpkh,
+            0,
+            "wpkh([817e7be0/84'/0'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/0/*)#",
+            "wpkh([817e7be0/84'/0'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/1/*)#",
+        );
+        assert_builder_matches_descriptor(
+            ScriptType::P2wpkh,
+            1,
+            "wpkh([817e7be0/84'/1'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/0/*)#",
+            "wpkh([817e7be0/84'/1'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/1/*)#",
+        );
+    }
+
+    #[test]
+    fn test_descriptor_builder_bip86_mainnet_and_testnet_paths() {
+        assert_builder_matches_descriptor(
+            ScriptType::P2tr,
+            0,
+            "tr([817e7be0/86'/0'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/0/*)#",
+            "tr([817e7be0/86'/0'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/1/*)#",
+        );
+        assert_builder_matches_descriptor(
+            ScriptType::P2tr,
+            1,
+            "tr([817e7be0/86'/1'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/0/*)#",
+            "tr([817e7be0/86'/1'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/1/*)#",
+        );
+    }
+
+    #[test]
+    fn test_descriptor_builder_arbitrary_coin_type() {
+        assert_builder_matches_descriptor(
+            ScriptType::P2wpkh,
+            123,
+            "wpkh([817e7be0/84'/123'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/0/*)#",
+            "wpkh([817e7be0/84'/123'/0']xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/1/*)#",
+        );
     }
 
     #[test]
