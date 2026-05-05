@@ -5,72 +5,102 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Generic single-sig JSON wallet export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenericJson {
+    /// Optional chain name from the source export
     #[serde(default)]
     pub chain: Option<String>,
+    /// Optional master fingerprint shared by the single-sig entries
     #[serde(default)]
     pub xfp: Option<String>,
+    /// Optional top-level xpub from the source export
     #[serde(default)]
     pub xpub: Option<String>,
+    /// Optional BIP44 P2PKH single-sig entry
     pub bip44: Option<SingleSig>,
+    /// Optional BIP49 P2SH-P2WPKH single-sig entry
     pub bip49: Option<SingleSig>,
+    /// Optional BIP84 P2WPKH single-sig entry
     pub bip84: Option<SingleSig>,
+    /// Optional BIP86 P2TR single-sig entry
     pub bip86: Option<SingleSig>,
 }
 
+/// Wasabi-style JSON wallet export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct WasabiJson {
+    /// Source Coldcard firmware version field
     pub cold_card_firmware_version: String,
+    /// Master fingerprint as an eight-character hexadecimal string
     pub master_fingerprint: String,
+    /// Account extended public key
     pub ext_pub_key: String,
 }
 
+/// Electrum JSON wallet export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ElectrumJson {
+    /// Electrum seed version
     pub seed_version: u32,
+    /// Whether the Electrum wallet file used encryption
     pub use_encryption: bool,
+    /// Electrum wallet type
     pub wallet_type: String,
+    /// Electrum keystore data containing the derivation and xpub
     pub keystore: Keystore,
 }
 
-// electrum
+/// Electrum keystore data used to derive descriptors
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Keystore {
+    /// Account derivation path from the Electrum export
     pub derivation: String,
+    /// Extended public key from the Electrum export
     pub xpub: String,
+    /// Optional Coldcard fingerprint encoded in Electrum's integer form
     #[serde(default)]
     pub ckcc_xfp: Option<u32>,
+    /// Optional Coldcard xpub used to recover the master fingerprint
     #[serde(default)]
     pub ckcc_xpub: Option<String>,
 }
 
+/// Generic single-sig descriptor or xpub entry
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SingleSig {
+    /// Script type for this entry when the field is present
     #[serde(default)]
     pub name: Option<ScriptType>,
+    /// Optional master fingerprint for this entry
     #[serde(default)]
     pub xfp: Option<String>,
+    /// Optional account derivation path for this entry
     #[serde(default)]
     pub deriv: Option<String>,
+    /// Optional account extended public key for this entry
     #[serde(default)]
     pub xpub: Option<String>,
+    /// Optional descriptor string, serialized as `desc`
     #[serde(default)]
     #[serde(rename = "desc")]
     pub descriptor: Option<String>,
+    /// Optional first address from the source export
     #[serde(default)]
     pub first: Option<String>,
 }
 
 impl Json {
+    /// Build descriptors for a bare child xpub string
     pub fn try_from_child_xpub_str(string: &str) -> Result<Self, crate::Error> {
         let xpub = xpub::Xpub::try_from(string)?;
 
         Self::try_from_parsed_child_xpub(xpub)
     }
 
+    /// Build all supported single-sig descriptor sets for a mainnet child xpub
     pub fn try_from_child_xpub(xpub: bitcoin::bip32::Xpub) -> Result<Self, crate::Error> {
         Self::try_from_child_xpub_with_coin_type(xpub, 0)
     }
@@ -107,6 +137,7 @@ impl Json {
         Self::try_from_child_xpub_with_purpose(xpub, single_sig_purpose, coin_type)
     }
 
+    /// Build descriptors from an xpub and the original extended-key format
     pub fn try_from_child_xpub_with_original_format(
         xpub: bitcoin::bip32::Xpub,
         original_format: OriginalFormat,
@@ -198,7 +229,7 @@ mod tests {
     /// Test Passport wallet export JSON format (Foundation Devices)
     ///
     /// This JSON format is used by Passport hardware wallet when exporting
-    /// wallet data via ur:bytes QR codes.
+    /// wallet data via ur:bytes QR codes
     ///
     /// Uses the "abandon" seed test vector:
     /// - BIP39: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"

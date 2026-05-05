@@ -1,19 +1,20 @@
 use bitcoin::bip32::{ChildNumber, DerivationPath};
 use serde::{Deserialize, Serialize};
 
+/// Supported single-sig descriptor script types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "kebab-case")]
 pub enum ScriptType {
-    /// BIP44 [44h/0h/0h]
+    /// BIP44 P2PKH, usually `44h/coin_typeh/0h`
     P2pkh,
 
-    /// BIP49 [49h/0h/0h]
+    /// BIP49 nested SegWit, usually `49h/coin_typeh/0h`
     P2shP2wpkh,
 
-    /// BIP84 [84h/0h/0h]
+    /// BIP84 native SegWit, usually `84h/coin_typeh/0h`
     P2wpkh,
 
-    /// BIP86 [86h/0h/0h]
+    /// BIP86 Taproot, usually `86h/coin_typeh/0h`
     P2tr,
 }
 
@@ -24,14 +25,18 @@ const HARDENED_49: u32 = 49 ^ HARDENED_FLAG;
 const HARDENED_84: u32 = 84 ^ HARDENED_FLAG;
 const HARDENED_86: u32 = 86 ^ HARDENED_FLAG;
 
+/// Errors returned while inferring or building script-type paths
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
+    /// The path does not match a supported account path shape
     #[error("Invalid path: {0:?}")]
     InvalidPath(Vec<u32>),
 
+    /// The account path contains a non-hardened component
     #[error("Path is not hardened")]
     NotHardened,
 
+    /// The path component cannot be represented as a child number
     #[error("Invalid child number: {0}")]
     InvalidChildNumber(u32),
 }

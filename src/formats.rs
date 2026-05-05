@@ -7,40 +7,57 @@ use crate::{
     xpub,
 };
 
+/// A parsed wallet export format
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub enum Format {
+    /// Output descriptors parsed from descriptor text
     Descriptor(Descriptors),
+    /// Descriptors parsed from a generic JSON export or bare child xpub
     Json(Box<Json>),
+    /// Descriptors parsed from a Wasabi wallet JSON export
     Wasabi(Descriptors),
+    /// Descriptors parsed from an Electrum wallet JSON export
     Electrum(Descriptors),
+    /// Descriptors parsed from a BIP380 key expression
     KeyExpression(Descriptors),
 }
 
+/// Errors returned while detecting or parsing a wallet export format
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Descriptor parsing failed
     #[error("Invalid descriptor: {0:?}")]
     InvalidDescriptor(#[from] descriptor::Error),
 
+    /// JSON parsing failed
     #[error("Invalid json: {0}")]
     InvalidJsonParse(#[from] serde_json::Error),
 
+    /// A JSON export was recognized but could not produce descriptors
     #[error("Unable to create descriptor from json")]
     InvalidDescriptorInJson,
 
+    /// A generic JSON export did not contain descriptor or xpub data
     #[error("Invalid json, no xpubs or descriptor")]
     JsonNoDecriptor,
 
+    /// Extended public-key parsing failed
     #[error("Invalid xpub: {0}")]
     InvalidXpub(#[from] xpub::Error),
 }
 
+/// Descriptors grouped by standard single-sig BIP purpose
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct Json {
+    /// BIP44 P2PKH descriptors
     pub bip44: Option<Descriptors>,
+    /// BIP49 P2SH-P2WPKH descriptors
     pub bip49: Option<Descriptors>,
+    /// BIP84 P2WPKH descriptors
     pub bip84: Option<Descriptors>,
+    /// BIP86 P2TR descriptors
     pub bip86: Option<Descriptors>,
 }
 
@@ -102,6 +119,23 @@ impl TryFrom<GenericJson> for Json {
 }
 
 impl Format {
+    /// Detect and parse a supported wallet export string
+    ///
+    /// Detection tries generic JSON, Wasabi JSON, Electrum JSON, descriptor
+    /// text, bare child xpubs, and BIP380 key expressions in that order
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use pubport::Format;
+    ///
+    /// let descriptor = "wpkh([817e7be0/84h/0h/0h]xpub6CiKnWv7PPyyeb4kCwK4fidKqVjPfD9TP6MiXnzBVGZYNanNdY3mMvywcrdDc6wK82jyBSd95vsk26QujnJWPrSaPfYeyW7NyX37HHGtfQM/<0;1>/*)#60tjs4c7";
+    /// let format = Format::try_new_from_str(descriptor)?;
+    ///
+    /// assert!(matches!(format, Format::Descriptor(_)));
+    ///
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn try_new_from_str(string: &str) -> Result<Self, Error> {
         if let Ok(json) = serde_json::from_str::<json::GenericJson>(string) {
             if let Ok(json) = Json::try_from(json) {
