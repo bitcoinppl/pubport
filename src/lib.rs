@@ -15,7 +15,7 @@
 //! - JSON
 //! - Bare XPUB
 //! - BIP380 Key Expressions
-//!   - note: XPUBs only, key expressions with private keys, bare compressed or uncompressed public keys are not supported)
+//!   - note: XPUBs only, key expressions with private keys, bare compressed or uncompressed public keys are not supported
 //!
 //! # Supported descriptors
 //!
