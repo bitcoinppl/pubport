@@ -6,6 +6,7 @@ use bitcoin::{
 };
 
 const EXTENDED_KEY_LENGTH: usize = 78;
+const MIN_ENCODED_EXTENDED_PUBLIC_KEY_LENGTH: usize = 100;
 
 const XPUB_VERSION: [u8; 4] = [0x04, 0x88, 0xb2, 0x1e];
 const YPUB_VERSION: [u8; 4] = [0x04, 0x9d, 0x7c, 0xb2];
@@ -203,10 +204,19 @@ pub fn normalize_slip132_public_keys(string: &str) -> Result<Cow<'_, str>, Error
 
     while index < string.len() {
         let rest = &string[index..];
+        let Some(next_char) = rest.chars().next() else {
+            break;
+        };
 
         if starts_with_slip132_prefix(rest) && has_base58_boundary_before(string, index) {
             let end_index = index + base58_token_len(rest);
             let token = &string[index..end_index];
+
+            if token.len() < MIN_ENCODED_EXTENDED_PUBLIC_KEY_LENGTH {
+                index += next_char.len_utf8();
+                continue;
+            }
+
             let replacement = to_standard_extended_public_key(token)?;
             let normalized = normalized.get_or_insert_with(String::new);
 
@@ -218,7 +228,6 @@ pub fn normalize_slip132_public_keys(string: &str) -> Result<Cow<'_, str>, Error
             continue;
         }
 
-        let next_char = rest.chars().next().expect("index is in bounds");
         index += next_char.len_utf8();
     }
 
@@ -415,6 +424,16 @@ mod tests {
     fn test_normalize_slip132_public_keys_in_descriptor() {
         let descriptor = format!("wpkh([73c5da0a/84h/0h/0h]{BIP84_ZPUB}/<0;1>/*)#ignored");
         let expected = format!("wpkh([73c5da0a/84h/0h/0h]{BIP84_XPUB}/<0;1>/*)#ignored");
+
+        let result = normalize_slip132_public_keys(&descriptor).unwrap();
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_normalize_slip132_public_keys_skips_short_tokens() {
+        let descriptor = format!("zpubINVALID {BIP84_ZPUB}");
+        let expected = format!("zpubINVALID {BIP84_XPUB}");
 
         let result = normalize_slip132_public_keys(&descriptor).unwrap();
 
