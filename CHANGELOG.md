@@ -2,16 +2,35 @@
 
 ## Unreleased
 
+## [0.6.0] [2026-06-18]
+
 ### Added
 
+- Add `descriptor::DescriptorBuilder` for building external/internal
+  descriptors from account xpubs, fingerprints, script types, and explicit or
+  coin-type-derived account paths
+- Add coin-type-aware descriptor construction with
+  `Descriptors::try_from_child_xpub_with_coin_type`, `ScriptType::purpose`,
+  and `ScriptType::account_derivation_path_for_coin_type`
 - Support Bitcoin public SLIP-132 extended keys across bare key, JSON,
-  Electrum, Wasabi, and BIP380 key-expression imports
+  descriptor, Electrum, Wasabi, and BIP380 key-expression imports
 - Support testnet single-sig SLIP-132 prefixes `upub` and `vpub`
+- Add extended-key metadata and normalization helpers, including
+  `xpub::OriginalFormat`, `xpub::SingleSigPurpose`, `Xpub::original_format`,
+  `Xpub::coin_type`, `Xpub::single_sig_purpose`,
+  `xpub::to_standard_extended_public_key`, and
+  `xpub::normalize_slip132_public_keys`
+- Add structured format-detection error details through
+  `FormatDetectionErrors` and the related detection error enums
 
 ### Changed
 
+- `Format::try_new_from_str` now returns `UnsupportedFormat` with collected
+  detection errors when no supported format matches
 - Bare `ypub` and `upub` imports now create only BIP49 descriptors
 - Bare `zpub` and `vpub` imports now create only BIP84 descriptors
+- Bare `tpub`, `upub`, and `vpub` imports now use testnet/signet coin type
+  paths in generated descriptors
 - SLIP-132 keys are normalized to standard `xpub` or `tpub` in descriptor
   output
 
@@ -22,10 +41,12 @@
 
 ### Breaking
 
-- Private extended keys and uppercase multisig SLIP-132 prefixes now return
-  typed unsupported-key errors instead of generic xpub parse failures
-- `ScriptType::descriptor_derivation_path` now returns `String` instead of
-  `&'static str`
+- `formats::Error` now uses `UnsupportedFormat(Box<FormatDetectionErrors>)`
+  for unsupported inputs, removes `InvalidDescriptorInJson`, and renames
+  `JsonNoDecriptor` to `MissingJsonDescriptorData`
+- `xpub::Error` variants now distinguish base58, length, unsupported private
+  key, and unsupported version failures instead of the older
+  `InvalidZpub`/`InvalidYpub*`/`NotXpub` variants
 - `KeyExpression` now includes the original extended public key format so
   origin-less SLIP-132 key expressions keep their advertised script purpose
 

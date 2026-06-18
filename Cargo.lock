@@ -435,7 +435,7 @@ dependencies = [
 
 [[package]]
 name = "pubport"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "bitcoin",
  "derive_more",
