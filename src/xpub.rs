@@ -1,4 +1,4 @@
-use std::str::FromStr as _;
+use std::{borrow::Cow, str::FromStr as _};
 
 use bitcoin::{
     base58,
@@ -195,6 +195,42 @@ pub fn to_standard_extended_public_key(xpub: &str) -> Result<String, Error> {
     Ok(standard_xpub)
 }
 
+/// Normalize all SLIP-132 public keys in a descriptor-like string
+pub fn normalize_slip132_public_keys(string: &str) -> Result<Cow<'_, str>, Error> {
+    let mut normalized = None;
+    let mut last_index = 0;
+    let mut index = 0;
+
+    while index < string.len() {
+        let rest = &string[index..];
+
+        if starts_with_slip132_prefix(rest) && has_base58_boundary_before(string, index) {
+            let end_index = index + base58_token_len(rest);
+            let token = &string[index..end_index];
+            let replacement = to_standard_extended_public_key(token)?;
+            let normalized = normalized.get_or_insert_with(String::new);
+
+            normalized.push_str(&string[last_index..index]);
+            normalized.push_str(&replacement);
+
+            last_index = end_index;
+            index = end_index;
+            continue;
+        }
+
+        let next_char = rest.chars().next().expect("index is in bounds");
+        index += next_char.len_utf8();
+    }
+
+    match normalized {
+        Some(mut normalized) => {
+            normalized.push_str(&string[last_index..]);
+            Ok(Cow::Owned(normalized))
+        }
+        None => Ok(Cow::Borrowed(string)),
+    }
+}
+
 /// Convert a zpub to standard xpub form
 #[deprecated(since = "0.6.0", note = "use to_standard_extended_public_key")]
 pub fn zpub_to_xpub(zpub: &str) -> Result<String, Error> {
@@ -262,6 +298,38 @@ fn version_info(version: [u8; 4]) -> Result<VersionInfo, Error> {
     };
 
     Ok(info)
+}
+
+fn starts_with_slip132_prefix(string: &str) -> bool {
+    ["ypub", "zpub", "upub", "vpub"]
+        .iter()
+        .any(|prefix| string.starts_with(prefix))
+}
+
+fn has_base58_boundary_before(string: &str, index: usize) -> bool {
+    if index == 0 {
+        return true;
+    }
+
+    string[..index]
+        .chars()
+        .next_back()
+        .map(|char| !is_base58_char(char))
+        .unwrap_or(true)
+}
+
+fn base58_token_len(string: &str) -> usize {
+    string
+        .char_indices()
+        .find_map(|(index, char)| (!is_base58_char(char)).then_some(index))
+        .unwrap_or(string.len())
+}
+
+fn is_base58_char(char: char) -> bool {
+    matches!(
+        char,
+        '1'..='9' | 'A'..='H' | 'J'..='N' | 'P'..='Z' | 'a'..='k' | 'm'..='z'
+    )
 }
 
 struct VersionInfo {
@@ -341,6 +409,16 @@ mod tests {
         let result =
             to_standard_extended_public_key(BIP84_ZPUB).expect("should convert zpub to xpub");
         assert_eq!(result, BIP84_XPUB);
+    }
+
+    #[test]
+    fn test_normalize_slip132_public_keys_in_descriptor() {
+        let descriptor = format!("wpkh([73c5da0a/84h/0h/0h]{BIP84_ZPUB}/<0;1>/*)#ignored");
+        let expected = format!("wpkh([73c5da0a/84h/0h/0h]{BIP84_XPUB}/<0;1>/*)#ignored");
+
+        let result = normalize_slip132_public_keys(&descriptor).unwrap();
+
+        assert_eq!(result, expected);
     }
 
     #[test]

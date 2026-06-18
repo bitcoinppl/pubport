@@ -1,7 +1,7 @@
 mod builder;
 mod script_type;
 
-use std::str::FromStr as _;
+use std::{borrow::Cow, str::FromStr as _};
 
 use bitcoin::{
     bip32::{DerivationPath, Fingerprint},
@@ -125,9 +125,7 @@ pub struct Descriptors {
 impl Descriptors {
     /// Parse a single multipath descriptor into external and internal descriptors
     pub fn try_from_line(line: &str) -> Result<Self, Error> {
-        let secp = &secp256k1::Secp256k1::signing_only();
-        let (descriptor, _keymap) =
-            Descriptor::<DescriptorPublicKey>::parse_descriptor(secp, line)?;
+        let descriptor = parse_descriptor_line(line)?;
 
         if !descriptor.is_multipath() {
             return Err(Error::MissingKeys);
@@ -357,12 +355,8 @@ impl TryFrom<&str> for Descriptors {
                 let external = lines[0];
                 let internal = lines[1];
 
-                let secp = &secp256k1::Secp256k1::signing_only();
-                let (internal_desc, _keymap) =
-                    Descriptor::<DescriptorPublicKey>::parse_descriptor(secp, internal)?;
-
-                let (external_desc, _keymap) =
-                    Descriptor::<DescriptorPublicKey>::parse_descriptor(secp, external)?;
+                let internal_desc = parse_descriptor_line(internal)?;
+                let external_desc = parse_descriptor_line(external)?;
 
                 Ok(Descriptors {
                     external: external_desc,
@@ -392,12 +386,34 @@ fn deserialize_descriptor<'de, D>(
 where
     D: serde::Deserializer<'de>,
 {
-    let secp = &secp256k1::Secp256k1::signing_only();
     let desc = String::deserialize(deserializer)?;
-    let (descriptor, _) = Descriptor::<DescriptorPublicKey>::parse_descriptor(secp, desc.as_str())
-        .map_err(serde::de::Error::custom)?;
+    let descriptor = parse_descriptor_line(&desc).map_err(serde::de::Error::custom)?;
 
     Ok(descriptor)
+}
+
+fn parse_descriptor_line(line: &str) -> Result<Descriptor<DescriptorPublicKey>, Error> {
+    let secp = &secp256k1::Secp256k1::signing_only();
+    let line = normalized_descriptor_line(line)?;
+    let (descriptor, _keymap) =
+        Descriptor::<DescriptorPublicKey>::parse_descriptor(secp, line.as_ref())?;
+
+    Ok(descriptor)
+}
+
+fn normalized_descriptor_line(line: &str) -> Result<Cow<'_, str>, Error> {
+    let normalized = xpub::normalize_slip132_public_keys(line)?;
+
+    match normalized {
+        Cow::Owned(normalized) => {
+            if let Some((descriptor, _checksum)) = normalized.rsplit_once('#') {
+                return Ok(Cow::Owned(descriptor.to_string()));
+            }
+
+            Ok(Cow::Owned(normalized))
+        }
+        Cow::Borrowed(line) => Ok(Cow::Borrowed(line)),
+    }
 }
 
 fn split_multipath_descriptor(
@@ -554,6 +570,28 @@ mod tests {
 
         assert_eq!(desc.external, external);
         assert_eq!(desc.internal, internal);
+    }
+
+    #[test]
+    fn test_parse_combination_descriptor_with_zpub() {
+        let descriptor = "wpkh([817e7be0/84h/0h/0h]zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1/<0;1>/*)";
+        let desc = Descriptors::try_from_line(descriptor).unwrap();
+
+        assert_eq!(desc.external, known_desc().external);
+        assert_eq!(desc.internal, known_desc().internal);
+    }
+
+    #[test]
+    fn test_parse_two_line_descriptor_with_zpub() {
+        let desc = r#"
+            wpkh([817e7be0/84h/0h/0h]zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1/0/*)
+            wpkh([817e7be0/84h/0h/0h]zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1/1/*)
+        "#;
+
+        let desc = Descriptors::try_from(desc).unwrap();
+
+        assert_eq!(desc.external.to_string(), known_desc().external.to_string());
+        assert_eq!(desc.internal.to_string(), known_desc().internal.to_string());
     }
 
     #[test]
