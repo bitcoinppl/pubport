@@ -84,6 +84,26 @@ impl ScriptType {
 
         Ok(DerivationPath::from(path))
     }
+
+    /// Return the default mainnet account derivation path string
+    pub fn descriptor_derivation_path(&self) -> &'static str {
+        match self {
+            Self::P2pkh => "44'/0'/0'",
+            Self::P2shP2wpkh => "49'/0'/0'",
+            Self::P2wpkh => "84'/0'/0'",
+            Self::P2tr => "86'/0'/0'",
+        }
+    }
+
+    /// Wrap a descriptor key expression in this script type's descriptor function
+    pub fn wrap_with(&self, script: &str) -> String {
+        match self {
+            Self::P2pkh => format!("pkh({script})"),
+            Self::P2shP2wpkh => format!("sh(wpkh({script}))"),
+            Self::P2wpkh => format!("wpkh({script})"),
+            Self::P2tr => format!("tr({script})"),
+        }
+    }
 }
 
 fn hardened_child_number(index: u32) -> Result<ChildNumber, Error> {
