@@ -582,6 +582,15 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_combination_descriptor_with_zpub_and_checksum() {
+        let descriptor = "wpkh([817e7be0/84h/0h/0h]zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1/<0;1>/*)#00000000";
+        let desc = Descriptors::try_from_line(descriptor).unwrap();
+
+        assert_eq!(desc.external, known_desc().external);
+        assert_eq!(desc.internal, known_desc().internal);
+    }
+
+    #[test]
     fn test_parse_two_line_descriptor_with_zpub() {
         let desc = r#"
             wpkh([817e7be0/84h/0h/0h]zpub6rNrPrFwgm4wMBSysetK5tpLBS2HYT8TDKQA6amxFHKJUnQq8rNtc4JDfGYPbvF9wJyagPpG1Faqnfe3BB8XzKon8LwW9KkMWyAQ4RQHzB1/0/*)
