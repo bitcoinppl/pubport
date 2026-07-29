@@ -1,11 +1,10 @@
 # PubPort
 
-<p>
-    <a href="https://crates.io/crates/pubport"><img alt="Crate Info" src="https://img.shields.io/crates/v/pubport.svg"/></a>
-    <a href="https://github.com/bitcoinppl/pubport/blob/master/LICENSE"><img alt="Apache-2.0 Licensed" src="https://img.shields.io/badge/Apache--2.0-blue.svg"/></a>
-    <a href="https://github.com/bitcoinppl/pubport/actions?query=workflow%3ACI"><img alt="CI Status" src="https://github.com/bitcoinppl/pubport/workflows/CI/badge.svg"></a>
-    <a href="https://docs.rs/pubport"><img alt="Docs" src="https://img.shields.io/badge/docs.rs-green"/></a>
-</p>
+[![crates.io](https://img.shields.io/crates/v/pubport.svg)](https://crates.io/crates/pubport)
+[![docs.rs](https://img.shields.io/docsrs/pubport)](https://docs.rs/pubport)
+[![Downloads](https://img.shields.io/crates/d/pubport.svg)](https://crates.io/crates/pubport)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/bitcoinppl/pubport/blob/master/LICENSE)
+[![CI](https://github.com/bitcoinppl/pubport/workflows/CI/badge.svg)](https://github.com/bitcoinppl/pubport/actions?query=workflow%3ACI)
 
 <!-- cargo-rdme start -->
 
